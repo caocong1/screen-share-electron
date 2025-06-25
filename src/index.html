@@ -105,6 +105,10 @@
                                 <span class="btn-icon">⛶</span>
                                 <span class="btn-text">全屏</span>
                             </button>
+                            <button id="toggleDebug" class="control-btn" title="切换调试模式">
+                                <span class="btn-icon">🐛</span>
+                                <span class="btn-text">调试</span>
+                            </button>
                             <button id="stopViewing" class="control-btn danger">
                                 <span class="btn-icon">⏹️</span>
                                 <span class="btn-text">停止</span>
@@ -117,6 +121,15 @@
                     <video id="remoteVideo" autoplay playsinline></video>
                     <div class="video-overlay" id="videoOverlay">
                         <div class="loading-spinner">连接中...</div>
+                    </div>
+                    <div class="debug-info" id="debugInfo" style="display: none;">
+                        <div>本机平台: <span id="clientPlatform">--</span></div>
+                        <div>视频尺寸: <span id="videoSize">--</span></div>
+                        <div>鼠标坐标: <span id="mouseCoords">--</span></div>
+                        <div>计算坐标: <span id="calcCoords">--</span></div>
+                        <div>控制状态: <span id="controlStatus">禁用</span></div>
+                        <div>拖拽状态: <span id="dragStatus">无</span></div>
+                        <div>远程信息: <span id="remoteInfo">--</span></div>
                     </div>
                 </div>
             </section>

@@ -91,6 +91,38 @@ ipcMain.handle('get-desktop-sources', async () => {
   }
 });
 
+// 坐标转换辅助函数
+function transformCoordinates(data) {
+  let actualX = data.x;
+  let actualY = data.y;
+  
+  if (data.screenInfo && data.screenInfo.bounds) {
+    const bounds = data.screenInfo.bounds;
+    const scaleFactor = data.screenInfo.scaleFactor || 1;
+    const clientPlatform = data.clientPlatform || 'unknown';
+    
+    // 智能坐标转换逻辑
+    if (process.platform === 'darwin' && scaleFactor > 1) {
+      if (clientPlatform === 'win32') {
+        actualX = bounds.x + (data.x / scaleFactor);
+        actualY = bounds.y + (data.y / scaleFactor);
+      } else {
+        actualX = bounds.x + data.x;
+        actualY = bounds.y + data.y;
+      }
+    } else {
+      actualX = bounds.x + data.x;
+      actualY = bounds.y + data.y;
+    }
+    
+    if (data.type !== 'mousemove' && data.type !== 'mousedrag') {
+      console.log(`[坐标转换] 接收端: ${process.platform}, 发送端: ${clientPlatform}, 原始: (${data.x}, ${data.y}), 缩放: ${scaleFactor}, 最终: (${actualX}, ${actualY})`);
+    }
+  }
+  
+  return { x: Math.round(actualX), y: Math.round(actualY) };
+}
+
 // 远程控制事件处理
 ipcMain.on('remote-control', (event, data) => {
   try {
@@ -110,58 +142,63 @@ ipcMain.on('remote-control', (event, data) => {
 
     switch (data.type) {
       case 'mousemove':
+      case 'mousedrag':
         if (typeof data.x === 'number' && typeof data.y === 'number') {
-          let actualX = data.x;
-          let actualY = data.y;
-          
-          // 如果有屏幕信息，计算实际的全局坐标
-          if (data.screenInfo && data.screenInfo.bounds) {
-            const bounds = data.screenInfo.bounds;
-            actualX = bounds.x + data.x;
-            actualY = bounds.y + data.y;
-            console.log(`[多屏幕] 原始坐标: (${data.x}, ${data.y}), 屏幕偏移: (${bounds.x}, ${bounds.y}), 实际坐标: (${actualX}, ${actualY})`);
-          }
-          
-          robot.moveMouse(Math.round(actualX), Math.round(actualY));
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
         }
-        break;
-
-      case 'mouseclick':
-        // 对于点击，需要先移动到正确位置再点击
-        if (data.x !== undefined && data.y !== undefined) {
-          let actualX = data.x;
-          let actualY = data.y;
-          
-          if (data.screenInfo && data.screenInfo.bounds) {
-            const bounds = data.screenInfo.bounds;
-            actualX = bounds.x + data.x;
-            actualY = bounds.y + data.y;
-          }
-          
-          robot.moveMouse(Math.round(actualX), Math.round(actualY));
-        }
-        robot.mouseClick(data.button || 'left', data.double || false);
         break;
 
       case 'mousedown':
-        // 对于鼠标按下，也需要考虑位置
         if (data.x !== undefined && data.y !== undefined) {
-          let actualX = data.x;
-          let actualY = data.y;
-          
-          if (data.screenInfo && data.screenInfo.bounds) {
-            const bounds = data.screenInfo.bounds;
-            actualX = bounds.x + data.x;
-            actualY = bounds.y + data.y;
-          }
-          
-          robot.moveMouse(Math.round(actualX), Math.round(actualY));
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
         }
         robot.mouseToggle('down', data.button || 'left');
         break;
 
       case 'mouseup':
+        if (data.x !== undefined && data.y !== undefined) {
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
+        }
         robot.mouseToggle('up', data.button || 'left');
+        break;
+
+      case 'mouseclick':
+        if (data.x !== undefined && data.y !== undefined) {
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
+        }
+        robot.mouseClick(data.button || 'left', false);
+        break;
+
+      case 'doubleclick':
+        if (data.x !== undefined && data.y !== undefined) {
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
+        }
+        robot.mouseClick(data.button || 'left', true);
+        break;
+
+      case 'contextmenu':
+        if (data.x !== undefined && data.y !== undefined) {
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
+        }
+        robot.mouseClick('right');
+        break;
+
+      case 'longpress':
+        if (data.x !== undefined && data.y !== undefined) {
+          const coords = transformCoordinates(data);
+          robot.moveMouse(coords.x, coords.y);
+        }
+        // 长按可以通过按下后延时释放来模拟
+        robot.mouseToggle('down', data.button || 'left');
+        setTimeout(() => {
+          robot.mouseToggle('up', data.button || 'left');
+        }, 100);
         break;
 
       case 'scroll':
@@ -170,21 +207,72 @@ ipcMain.on('remote-control', (event, data) => {
         }
         break;
 
-      case 'keypress':
-        if (data.key) {
-          robot.keyTap(data.key, data.modifiers || []);
-        }
-        break;
-
       case 'keydown':
         if (data.key) {
-          robot.keyToggle(data.key, 'down', data.modifiers || []);
+          // 处理修饰键
+          const modifiers = [];
+          if (data.ctrlKey) modifiers.push('control');
+          if (data.altKey) modifiers.push('alt');
+          if (data.shiftKey) modifiers.push('shift');
+          if (data.metaKey) modifiers.push(process.platform === 'darwin' ? 'command' : 'meta');
+          
+          // 键名映射 - RobotJS使用不同的键名
+          const keyMap = {
+            'ArrowUp': 'up',
+            'ArrowDown': 'down',
+            'ArrowLeft': 'left',
+            'ArrowRight': 'right',
+            'Delete': 'delete',
+            'Backspace': 'backspace',
+            'Enter': 'enter',
+            'Tab': 'tab',
+            'Escape': 'escape',
+            'Space': 'space',
+            'CapsLock': 'capslock',
+            'Control': 'control',
+            'Alt': 'alt',
+            'Shift': 'shift',
+            'Meta': process.platform === 'darwin' ? 'command' : 'meta'
+          };
+          
+          const robotKey = keyMap[data.key] || data.key.toLowerCase();
+          
+          if (modifiers.length > 0) {
+            robot.keyTap(robotKey, modifiers);
+          } else {
+            robot.keyToggle(robotKey, 'down');
+          }
         }
         break;
 
       case 'keyup':
         if (data.key) {
-          robot.keyToggle(data.key, 'up', data.modifiers || []);
+          const keyMap = {
+            'ArrowUp': 'up',
+            'ArrowDown': 'down',
+            'ArrowLeft': 'left',
+            'ArrowRight': 'right',
+            'Delete': 'delete',
+            'Backspace': 'backspace',
+            'Enter': 'enter',
+            'Tab': 'tab',
+            'Escape': 'escape',
+            'Space': 'space',
+            'CapsLock': 'capslock',
+            'Control': 'control',
+            'Alt': 'alt',
+            'Shift': 'shift',
+            'Meta': process.platform === 'darwin' ? 'command' : 'meta'
+          };
+          
+          const robotKey = keyMap[data.key] || data.key.toLowerCase();
+          robot.keyToggle(robotKey, 'up');
+        }
+        break;
+
+      case 'keypress':
+        if (data.key) {
+          robot.keyTap(data.key, data.modifiers || []);
         }
         break;
 
@@ -252,6 +340,31 @@ ipcMain.handle('get-network-info', () => {
     hostname: os.hostname(),
     platform: os.platform(),
     addresses: addresses
+  };
+});
+
+// 获取系统显示信息（用于调试）
+ipcMain.handle('get-display-info', () => {
+  const { screen } = require('electron');
+  const allDisplays = screen.getAllDisplays();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  
+  return {
+    platform: process.platform,
+    allDisplays: allDisplays.map(display => ({
+      id: display.id,
+      bounds: display.bounds,
+      workArea: display.workArea,
+      scaleFactor: display.scaleFactor,
+      isPrimary: display.id === primaryDisplay.id,
+      size: display.size,
+      workAreaSize: display.workAreaSize
+    })),
+    primaryDisplay: {
+      id: primaryDisplay.id,
+      bounds: primaryDisplay.bounds,
+      scaleFactor: primaryDisplay.scaleFactor
+    }
   };
 });
 

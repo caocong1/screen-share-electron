@@ -483,6 +483,52 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  pointer-events: auto;
+  cursor: crosshair;
+  outline: none;
+}
+
+.video-container video:focus {
+  outline: none;
+}
+
+/* 当控制启用时改变鼠标样式 */
+.control-enabled .video-container video {
+  cursor: crosshair;
+}
+
+.control-enabled .video-container {
+  border: 2px solid #28a745;
+  border-radius: 10px;
+}
+
+/* 拖拽状态样式 */
+.video-container.dragging {
+  border: 3px solid #007bff !important;
+  box-shadow: 0 0 15px rgba(0, 123, 255, 0.5);
+}
+
+.video-container.dragging video {
+  cursor: grabbing !important;
+}
+
+/* 调试模式下显示坐标信息 */
+.debug-info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .video-overlay {

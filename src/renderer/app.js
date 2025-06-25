@@ -92,6 +92,7 @@ class ScreenShareApp {
       refreshUsers: document.getElementById('refreshUsers'),
       toggleControl: document.getElementById('toggleControl'),
       toggleFullscreen: document.getElementById('toggleFullscreen'),
+      toggleDebug: document.getElementById('toggleDebug'),
       stopViewing: document.getElementById('stopViewing'),
       // Display Areas
       screenSources: document.getElementById('screenSources'),
@@ -105,7 +106,20 @@ class ScreenShareApp {
       networkInfo: document.getElementById('networkInfo'),
       appStatus: document.getElementById('appStatus'),
       viewTitle: document.getElementById('viewTitle'),
+      // Debug elements
+      debugInfo: document.getElementById('debugInfo'),
+      clientPlatform: document.getElementById('clientPlatform'),
+      videoSize: document.getElementById('videoSize'),
+      mouseCoords: document.getElementById('mouseCoords'),
+      calcCoords: document.getElementById('calcCoords'),
+      controlStatus: document.getElementById('controlStatus'),
+      dragStatus: document.getElementById('dragStatus'),
+      remoteInfo: document.getElementById('remoteInfo'),
     };
+    
+    // 初始化调试模式
+    this.debugMode = false;
+    window.app = this; // 方便控制台调试
   }
 
   initSignalClient() {
@@ -140,6 +154,7 @@ class ScreenShareApp {
             this.dom.remoteVideo.requestFullscreen();
         }
       },
+      toggleDebug: this.toggleDebug.bind(this),
       stopViewing: this.stopViewing.bind(this),
     };
 
@@ -152,9 +167,42 @@ class ScreenShareApp {
     }
     
     if (this.dom.remoteVideo) {
-        this.dom.remoteVideo.onmousemove = this.handleRemoteMouseMove.bind(this);
-        this.dom.remoteVideo.onclick = this.handleRemoteMouseClick.bind(this);
-        this.dom.remoteVideo.onwheel = this.handleRemoteMouseWheel.bind(this);
+        // 禁用视频控件和默认行为
+        this.dom.remoteVideo.controls = false;
+        this.dom.remoteVideo.disablePictureInPicture = true;
+        this.dom.remoteVideo.setAttribute('playsinline', 'true');
+        
+        // 绑定鼠标事件 - 增强版
+        this.dom.remoteVideo.addEventListener('mousemove', this.handleRemoteMouseMove.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('mousedown', this.handleRemoteMouseDown.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('mouseup', this.handleRemoteMouseUp.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('click', this.handleRemoteMouseClick.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('dblclick', this.handleRemoteDoubleClick.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('wheel', this.handleRemoteMouseWheel.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('contextmenu', this.handleRemoteContextMenu.bind(this), { passive: false });
+        
+        // 键盘事件（需要视频元素有焦点）
+        this.dom.remoteVideo.addEventListener('keydown', this.handleRemoteKeyDown.bind(this), { passive: false });
+        this.dom.remoteVideo.addEventListener('keyup', this.handleRemoteKeyUp.bind(this), { passive: false });
+        this.dom.remoteVideo.tabIndex = 0; // 使视频元素可以获得焦点
+        
+        // 初始化拖拽状态
+        this.dragState = {
+          isDragging: false,
+          button: null,
+          startX: 0,
+          startY: 0,
+          startTime: 0
+        };
+        
+        // 长按定时器
+        this.longPressTimer = null;
+        this.longPressDelay = 500; // 500ms判定为长按
+        
+        // 禁用选择和拖拽
+        this.dom.remoteVideo.style.userSelect = 'none';
+        this.dom.remoteVideo.style.webkitUserSelect = 'none';
+        this.dom.remoteVideo.style.pointerEvents = 'auto';
     } else {
         console.error(`[UI BINDING] 关键元素未找到: #remoteVideo`);
     }
@@ -575,67 +623,464 @@ class ScreenShareApp {
       iconSpan.textContent = '✅';
       textSpan.textContent = '控制已启用';
       this.dom.toggleControl.classList.add('control-enabled');
+      // 给整个屏幕视图添加控制启用的样式
+      this.dom.screenView.classList.add('control-enabled');
     } else {
       iconSpan.textContent = '🎮';
       textSpan.textContent = '启用控制';
       this.dom.toggleControl.classList.remove('control-enabled');
+      this.dom.screenView.classList.remove('control-enabled');
+    }
+    
+    // 更新调试信息
+    if (this.dom.controlStatus) {
+      this.dom.controlStatus.textContent = this.isControlEnabled ? '启用' : '禁用';
     }
     
     this.updateAppStatus(this.isControlEnabled ? '远程控制已启用' : '远程控制已禁用');
   }
 
-  // 计算视频坐标到屏幕坐标的映射
+  // 添加调试功能
+  async toggleDebug() {
+    this.debugMode = !this.debugMode;
+    if (this.dom.debugInfo) {
+      this.dom.debugInfo.style.display = this.debugMode ? 'block' : 'none';
+    }
+    
+    // 更新视频尺寸信息
+    if (this.debugMode && this.dom.remoteVideo && this.dom.videoSize) {
+      const updateVideoSize = () => {
+        this.dom.videoSize.textContent = `${this.dom.remoteVideo.videoWidth}×${this.dom.remoteVideo.videoHeight}`;
+      };
+      
+      if (this.dom.remoteVideo.videoWidth) {
+        updateVideoSize();
+      } else {
+        this.dom.remoteVideo.addEventListener('loadedmetadata', updateVideoSize, { once: true });
+      }
+    }
+    
+    // 在调试模式下显示系统显示信息
+    if (this.debugMode) {
+      try {
+        const displayInfo = await window.electronAPI.getDisplayInfo();
+        console.log('系统显示信息:', displayInfo);
+        
+        // 更新调试面板信息
+        if (this.dom.clientPlatform) {
+          this.dom.clientPlatform.textContent = window.electronAPI.platform;
+        }
+        
+        // 显示当前选中屏幕的信息
+        if (this.selectedScreenInfo) {
+          console.log('当前选中屏幕信息:', this.selectedScreenInfo);
+          if (this.dom.remoteInfo) {
+            const info = `缩放:${this.selectedScreenInfo.scaleFactor}x 分辨率:${this.selectedScreenInfo.bounds.width}×${this.selectedScreenInfo.bounds.height}`;
+            this.dom.remoteInfo.textContent = info;
+          }
+        }
+      } catch (error) {
+        console.error('获取显示信息失败:', error);
+      }
+    }
+    
+    console.log(`调试模式${this.debugMode ? '已启用' : '已禁用'}`);
+    return this.debugMode;
+  }
+
+  // 改进的坐标计算函数
   calculateVideoCoordinates(e) {
     const video = this.dom.remoteVideo;
-    const rect = video.getBoundingClientRect();
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const rectRatio = rect.width / rect.height;
+    
+    // 确保视频已加载
+    if (!video.videoWidth || !video.videoHeight) {
+      console.warn('[坐标计算] 视频尺寸未就绪:', { videoWidth: video.videoWidth, videoHeight: video.videoHeight });
+      return { x: 0, y: 0, valid: false };
+    }
 
-    let scale, offsetX, offsetY;
-    if (videoRatio > rectRatio) {
-      scale = video.videoWidth / rect.width;
+    const rect = video.getBoundingClientRect();
+    const videoAspectRatio = video.videoWidth / video.videoHeight;
+    const containerAspectRatio = rect.width / rect.height;
+
+    if (this.debugMode) {
+      console.log('[坐标计算] 视频信息:', {
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        videoAspectRatio,
+        containerWidth: rect.width,
+        containerHeight: rect.height,
+        containerAspectRatio,
+        mouseClientX: e.clientX,
+        mouseClientY: e.clientY,
+        rectLeft: rect.left,
+        rectTop: rect.top
+      });
+    }
+
+    // 计算视频在容器中的实际显示区域
+    let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      // 视频更宽，以宽度为准，高度居中
+      videoDisplayWidth = rect.width;
+      videoDisplayHeight = rect.width / videoAspectRatio;
       offsetX = 0;
-      offsetY = (rect.height - video.videoHeight / scale) / 2;
+      offsetY = (rect.height - videoDisplayHeight) / 2;
     } else {
-      scale = video.videoHeight / rect.height;
-      offsetX = (rect.width - video.videoWidth / scale) / 2;
+      // 视频更高，以高度为准，宽度居中
+      videoDisplayWidth = rect.height * videoAspectRatio;
+      videoDisplayHeight = rect.height;
+      offsetX = (rect.width - videoDisplayWidth) / 2;
       offsetY = 0;
     }
 
-    const x = (e.clientX - rect.left - offsetX) * scale;
-    const y = (e.clientY - rect.top - offsetY) * scale;
+    // 计算鼠标在视频显示区域中的相对位置
+    const relativeX = e.clientX - rect.left - offsetX;
+    const relativeY = e.clientY - rect.top - offsetY;
 
-    return { x, y, valid: x >= 0 && x <= video.videoWidth && y >= 0 && y <= video.videoHeight };
+    // 转换为视频原始分辨率的坐标
+    const scaleX = video.videoWidth / videoDisplayWidth;
+    const scaleY = video.videoHeight / videoDisplayHeight;
+    
+    const x = relativeX * scaleX;
+    const y = relativeY * scaleY;
+
+    const valid = relativeX >= 0 && relativeX <= videoDisplayWidth && 
+                  relativeY >= 0 && relativeY <= videoDisplayHeight;
+
+    if (this.debugMode) {
+      console.log('[坐标计算] 结果:', {
+        videoDisplayWidth,
+        videoDisplayHeight,
+        offsetX,
+        offsetY,
+        relativeX,
+        relativeY,
+        scaleX,
+        scaleY,
+        finalX: x,
+        finalY: y,
+        valid
+      });
+    }
+
+    return { x: Math.round(x), y: Math.round(y), valid };
   }
   
   handleRemoteMouseMove(e) {
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value; // 假设只连接一个
-    if (!p2p) return;
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (coords.valid) {
-      p2p.sendControlCommand({ type: 'mousemove', x: coords.x, y: coords.y });
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 更新调试信息
+    if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
+      this.dom.mouseCoords.textContent = `(${e.clientX}, ${e.clientY})`;
+      const coords = this.calculateVideoCoordinates(e);
+      this.dom.calcCoords.textContent = `(${coords.x}, ${coords.y}) ${coords.valid ? '✓' : '✗'}`;
+      
+      // 更新拖拽状态
+      if (this.dom.dragStatus) {
+        if (this.dragState.isDragging) {
+          const duration = Date.now() - this.dragState.startTime;
+          this.dom.dragStatus.textContent = `拖拽中 ${this.dragState.button} ${duration}ms`;
+        } else {
+          this.dom.dragStatus.textContent = '无';
+        }
+      }
     }
-  }
-  
-  handleRemoteMouseClick(e) {
+    
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
 
     const coords = this.calculateVideoCoordinates(e);
     if (coords.valid) {
-      p2p.sendControlCommand({ type: 'mouseclick', button: 'left', x: coords.x, y: coords.y });
+      // 减少日志频率，只在调试模式下每100次打印一次
+      if (this.debugMode && Math.random() < 0.01) {
+        console.log('[鼠标移动] 发送坐标:', coords);
+      }
+      
+      // 基础命令对象
+      const command = {
+        type: this.dragState.isDragging ? 'mousedrag' : 'mousemove',
+        x: coords.x, 
+        y: coords.y,
+        clientPlatform: window.electronAPI.platform,
+        videoResolution: {
+          width: this.dom.remoteVideo.videoWidth,
+          height: this.dom.remoteVideo.videoHeight
+        }
+      };
+      
+      // 如果正在拖拽，添加拖拽信息
+      if (this.dragState.isDragging) {
+        command.button = this.dragState.button;
+        command.startX = this.dragState.startX;
+        command.startY = this.dragState.startY;
+      }
+      
+      p2p.sendControlCommand(command);
     }
+  }
+  
+  handleRemoteMouseDown(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!this.isControlEnabled) return;
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (!coords.valid) return;
+
+    // 确定按键类型
+    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
+    
+    // 更新拖拽状态
+    this.dragState = {
+      isDragging: true,
+      button: button,
+      startX: coords.x,
+      startY: coords.y,
+      startTime: Date.now()
+    };
+
+    // 添加拖拽视觉反馈
+    const videoContainer = this.dom.remoteVideo.parentElement;
+    if (videoContainer) {
+      videoContainer.classList.add('dragging');
+    }
+
+    console.log(`[鼠标按下] ${button}键 坐标:`, coords);
+
+    // 设置长按定时器
+    this.longPressTimer = setTimeout(() => {
+      if (this.dragState.isDragging) {
+        console.log('[长按检测] 触发长按');
+        const longPressCommand = {
+          type: 'longpress',
+          button: button,
+          x: coords.x,
+          y: coords.y,
+          clientPlatform: window.electronAPI.platform,
+          videoResolution: {
+            width: this.dom.remoteVideo.videoWidth,
+            height: this.dom.remoteVideo.videoHeight
+          }
+        };
+        p2p.sendControlCommand(longPressCommand);
+      }
+    }, this.longPressDelay);
+
+    // 发送鼠标按下事件
+    const command = {
+      type: 'mousedown',
+      button: button,
+      x: coords.x,
+      y: coords.y,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      }
+    };
+
+    p2p.sendControlCommand(command);
+  }
+
+  handleRemoteMouseUp(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!this.isControlEnabled) return;
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (!coords.valid) return;
+
+    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
+    const wasDragging = this.dragState.isDragging;
+    const dragDuration = Date.now() - this.dragState.startTime;
+
+    console.log(`[鼠标释放] ${button}键 坐标:`, coords, `拖拽:${wasDragging} 时长:${dragDuration}ms`);
+
+    // 清除长按定时器
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+
+    // 发送鼠标释放事件
+    const command = {
+      type: 'mouseup',
+      button: button,
+      x: coords.x,
+      y: coords.y,
+      wasDragging: wasDragging,
+      dragDuration: dragDuration,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      }
+    };
+
+    // 如果是拖拽结束，添加拖拽信息
+    if (wasDragging) {
+      command.startX = this.dragState.startX;
+      command.startY = this.dragState.startY;
+    }
+
+    p2p.sendControlCommand(command);
+
+    // 重置拖拽状态
+    this.dragState.isDragging = false;
+
+    // 移除拖拽视觉反馈
+    const videoContainer = this.dom.remoteVideo.parentElement;
+    if (videoContainer) {
+      videoContainer.classList.remove('dragging');
+    }
+  }
+
+  handleRemoteMouseClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Click事件在mouseup之后触发，这里主要用于处理简单点击
+    // 复杂的交互已经在mousedown/mouseup中处理
+    if (this.debugMode) {
+      console.log('[鼠标点击] Click事件触发');
+    }
+  }
+
+  handleRemoteDoubleClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!this.isControlEnabled) return;
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (!coords.valid) return;
+
+    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
+    
+    console.log('[双击] 发送坐标:', coords);
+
+    const command = {
+      type: 'doubleclick',
+      button: button,
+      x: coords.x,
+      y: coords.y,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      }
+    };
+
+    p2p.sendControlCommand(command);
+  }
+
+  handleRemoteContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!this.isControlEnabled) return;
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (!coords.valid) return;
+
+    console.log('[右键菜单] 发送坐标:', coords);
+
+    const command = {
+      type: 'contextmenu',
+      x: coords.x,
+      y: coords.y,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      }
+    };
+
+    p2p.sendControlCommand(command);
   }
   
   handleRemoteMouseWheel(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
-    if (p2p) {
-      p2p.sendControlCommand({ type: 'scroll', x: -e.deltaX, y: -e.deltaY });
+    if (!p2p) return;
+
+    console.log('[鼠标滚轮] 发送滚动:', { deltaX: e.deltaX, deltaY: e.deltaY });
+    
+    const command = {
+      type: 'scroll',
+      x: -e.deltaX,
+      y: -e.deltaY,
+      clientPlatform: window.electronAPI.platform
+    };
+    
+    p2p.sendControlCommand(command);
+  }
+
+  handleRemoteKeyDown(e) {
+    if (!this.isControlEnabled) return;
+    
+    // 某些特殊键需要阻止默认行为
+    const specialKeys = ['Tab', 'F5', 'F11', 'F12', 'Alt', 'Control', 'Meta'];
+    if (specialKeys.includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    console.log('[键盘按下]', { key: e.key, code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey });
+
+    const command = {
+      type: 'keydown',
+      key: e.key,
+      code: e.code,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      clientPlatform: window.electronAPI.platform
+    };
+
+    p2p.sendControlCommand(command);
+  }
+
+  handleRemoteKeyUp(e) {
+    if (!this.isControlEnabled) return;
+    
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    console.log('[键盘释放]', { key: e.key, code: e.code });
+
+    const command = {
+      type: 'keyup',
+      key: e.key,
+      code: e.code,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      clientPlatform: window.electronAPI.platform
+    };
+
+    p2p.sendControlCommand(command);
   }
 
   updateAppStatus(text) {

@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 新增：macOS 屏幕录制权限管理
   manageScreenPermission: () => ipcRenderer.invoke('manage-screen-permission'),
   
+  // 获取显示信息（用于调试缩放问题）
+  getDisplayInfo: () => ipcRenderer.invoke('get-display-info'),
+  
   // 平台信息
   platform: process.platform
 });
