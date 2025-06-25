@@ -173,55 +173,16 @@ function transformCoordinates(data) {
     } else {
       // Windows/Linux接收端
       if (clientPlatform === 'darwin') {
-        // macOS -> Windows: 特殊处理缩放
-        console.log('[坐标转换] macOS -> Windows 缩放处理');
-        
-        // 测试：检查robotjs使用的坐标系统
-        if (data.type === 'mousedown') {
-          console.log('[坐标转换] robotjs坐标系统测试:', {
-            logicalResolution: { width: bounds.width, height: bounds.height },
-            physicalResolution: { width: bounds.width * scaleFactor, height: bounds.height * scaleFactor },
-            scaleFactor: scaleFactor,
-            videoResolution: { width: videoWidth, height: videoHeight }
-          });
-        }
-        
-        // 计算相对位置
+        // macOS -> Windows: 使用相对位置映射到物理分辨率
         const relativeX = data.x / videoWidth;
         const relativeY = data.y / videoHeight;
         
-        // 尝试多种映射方式
-        const mappingOptions = {
-          // 方式1：映射到物理分辨率（robotjs使用物理坐标）
-          physical: {
-            x: bounds.x + (relativeX * bounds.width * scaleFactor),
-            y: bounds.y + (relativeY * bounds.height * scaleFactor)
-          },
-          // 方式2：映射到逻辑分辨率（robotjs使用逻辑坐标）
-          logical: {
-            x: bounds.x + (relativeX * bounds.width),
-            y: bounds.y + (relativeY * bounds.height)
-          },
-          // 方式3：直接除以缩放因子（当前方式）
-          directScale: {
-            x: bounds.x + (data.x / scaleFactor),
-            y: bounds.y + (data.y / scaleFactor)
-          }
-        };
-        
-        console.log('[坐标转换] 映射选项测试:', {
-          originalCoords: { x: data.x, y: data.y },
-          relativePosition: { x: relativeX, y: relativeY },
-          mappingOptions: mappingOptions
-        });
-        
-        // 现在尝试使用物理坐标映射（robotjs可能使用物理坐标）
-        actualX = mappingOptions.physical.x;
-        actualY = mappingOptions.physical.y;
+        // robotjs在Windows上使用物理坐标系统
+        actualX = bounds.x + (relativeX * bounds.width * scaleFactor);
+        actualY = bounds.y + (relativeY * bounds.height * scaleFactor);
         
         debugInfo.mappingType = 'relative-to-physical';
         debugInfo.relativePosition = { x: relativeX, y: relativeY };
-        debugInfo.allMappingOptions = mappingOptions;
       } else {
         // Windows -> Windows: 直接映射
         actualX = bounds.x + data.x;
