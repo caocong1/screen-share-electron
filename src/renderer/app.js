@@ -435,7 +435,7 @@ class ScreenShareApp {
     if (this.p2pConnections.has(hostId)) return;
     this.updateAppStatus(`正在连接到 ${hostId}...`);
 
-    const p2p = new P2PConnection(this.userId, hostId);
+    const p2p = new P2PConnection(this.userId, hostId, { isGuest: true });
     this.p2pConnections.set(hostId, p2p);
 
     p2p.addEventListener('icecandidate', ({ detail: candidate }) => {
@@ -488,8 +488,7 @@ class ScreenShareApp {
     
     // No need for a control listener here, as host only sends video
 
-    const answer = await p2p.createAnswer(offer);
-    this.localStream.getTracks().forEach(track => p2p.pc.addTrack(track, this.localStream));
+    const answer = await p2p.createAnswer(offer, this.localStream);
     this.signal.send({ type: 'answer', to: fromId, from: this.userId, data: answer });
   }
 

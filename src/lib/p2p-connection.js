@@ -9,11 +9,13 @@ export class P2PConnection extends EventTarget {
   /**
    * @param {string} localId 本地用户ID
    * @param {string} remoteId 远程用户ID
+   * @param {object} options 连接选项，例如 { isGuest: true }
    */
-  constructor(localId, remoteId) {
+  constructor(localId, remoteId, options = {}) {
     super();
     this.localId = localId;
     this.remoteId = remoteId;
+    this.options = options; // 保存选项
     this.pc = null;
     this.dataChannel = null;
     this.remoteStream = null;
@@ -50,11 +52,19 @@ export class P2PConnection extends EventTarget {
   /**
    * 处理接收到的 offer 并创建 answer（连接接收方调用）
    * @param {RTCSessionDescriptionInit} offer 远程用户发送的 offer
+   * @param {MediaStream} stream 要添加到连接中的本地媒体流
    */
-  async createAnswer(offer) {
+  async createAnswer(offer, stream) {
     this._initializePeerConnection();
 
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+    // 在创建 answer 前，将媒体流的轨道添加到 PeerConnection
+    if (stream) {
+        stream.getTracks().forEach(track => {
+            this.pc.addTrack(track, stream);
+        });
+    }
 
     // 创建 SDP answer
     const answer = await this.pc.createAnswer();
@@ -127,6 +137,12 @@ export class P2PConnection extends EventTarget {
    */
   _initializePeerConnection() {
     this.pc = new RTCPeerConnection({ iceServers: config.webrtc.iceServers });
+
+    // 如果是观看端，则设置收发器以准备接收媒体
+    if (this.options.isGuest) {
+        this.pc.addTransceiver('video', { direction: 'recvonly' });
+        this.pc.addTransceiver('audio', { direction: 'recvonly' });
+    }
 
     this.pc.onicecandidate = event => {
       if (event.candidate) {
