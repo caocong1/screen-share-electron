@@ -97,7 +97,7 @@
                     <div class="view-info">
                         <h2 id="viewTitle">屏幕共享</h2>
                         <div class="view-controls">
-                            <button id="toggleControl" class="control-btn">
+                            <button id="toggleControl" class="control-btn" title="启用远程控制（包括鼠标和物理键盘输入映射）">
                                 <span class="btn-icon">🎮</span>
                                 <span class="btn-text">启用控制</span>
                             </button>
@@ -147,6 +147,7 @@
                         <div>鼠标坐标: <span id="mouseCoords">--</span></div>
                         <div>计算坐标: <span id="calcCoords">--</span></div>
                         <div>控制状态: <span id="controlStatus">禁用</span></div>
+                        <div>全局键盘: <span id="globalKeyboardStatus">禁用</span></div>
                         <div>拖拽状态: <span id="dragStatus">无</span></div>
                         <div>远程信息: <span id="remoteInfo">--</span></div>
                     </div>
@@ -157,6 +158,10 @@
                     <div class="keyboard-header">
                         <h3>⌨️ 虚拟键盘</h3>
                         <button class="keyboard-close" id="keyboardClose">×</button>
+                    </div>
+                    
+                    <div class="keyboard-notice" id="keyboardNotice" style="background: #e8f5e8; padding: 8px 12px; margin: 8px; border-radius: 4px; font-size: 12px; color: #2d5a2d; display: none;">
+                        💡 <strong>提示：</strong>当启用控制模式时，您的物理键盘输入会自动映射到远程电脑。虚拟键盘用于特殊按键和快捷键操作。
                     </div>
                     
                     <div class="keyboard-content">

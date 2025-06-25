@@ -70,6 +70,10 @@ class ScreenShareApp {
     this.p2pConnections = new Map();
     this.allUsers = new Map();
     this.isControlEnabled = false;
+    
+    // 添加全局键盘监听器的引用
+    this.globalKeyDownHandler = null;
+    this.globalKeyUpHandler = null;
 
     this.initDomElements();
     this.bindUIEvents();
@@ -114,11 +118,13 @@ class ScreenShareApp {
       mouseCoords: document.getElementById('mouseCoords'),
       calcCoords: document.getElementById('calcCoords'),
       controlStatus: document.getElementById('controlStatus'),
+      globalKeyboardStatus: document.getElementById('globalKeyboardStatus'),
       dragStatus: document.getElementById('dragStatus'),
       remoteInfo: document.getElementById('remoteInfo'),
       // Virtual keyboard elements
       virtualKeyboard: document.getElementById('virtualKeyboard'),
       keyboardClose: document.getElementById('keyboardClose'),
+      keyboardNotice: document.getElementById('keyboardNotice'),
       textInput: document.getElementById('textInput'),
       sendText: document.getElementById('sendText'),
       sendEnter: document.getElementById('sendEnter'),
@@ -270,6 +276,11 @@ class ScreenShareApp {
       } else if (panelName === 'modeSelection') {
         this.stopSharing();
         this.stopViewing();
+        // 切换到主菜单时清理全局键盘监听
+        this.disableGlobalKeyboardControl();
+      } else if (panelName !== 'screenView') {
+        // 如果不是屏幕视图，清理全局键盘监听
+        this.disableGlobalKeyboardControl();
       }
     } catch (error) {
       console.error(`[UI] Error in showPanel while switching to '${panelName}':`, error);
@@ -655,6 +666,10 @@ class ScreenShareApp {
 
     // 重置遮罩层状态，为下次连接做准备
     this.dom.videoOverlay.style.display = 'flex';
+    
+    // 重置控制状态并清理全局键盘监听
+    this.isControlEnabled = false;
+    this.disableGlobalKeyboardControl();
   }
 
   // --- WebRTC 信令处理 ---
@@ -751,12 +766,17 @@ class ScreenShareApp {
       this.dom.toggleControl.classList.add('control-enabled');
       // 给整个屏幕视图添加控制启用的样式
       this.dom.screenView.classList.add('control-enabled');
-      console.log('[远程控制] 控制已启用，屏幕信息:', screenInfo);
+      // 启用全局键盘监听
+      this.enableGlobalKeyboardControl();
+      console.log('[远程控制] 控制已启用，包括全局键盘监听，屏幕信息:', screenInfo);
     } else {
       iconSpan.textContent = '🎮';
       textSpan.textContent = '启用控制';
       this.dom.toggleControl.classList.remove('control-enabled');
       this.dom.screenView.classList.remove('control-enabled');
+      // 禁用全局键盘监听
+      this.disableGlobalKeyboardControl();
+      console.log('[远程控制] 控制已禁用，已移除全局键盘监听');
     }
     
     // 更新调试信息
@@ -764,7 +784,146 @@ class ScreenShareApp {
       this.dom.controlStatus.textContent = this.isControlEnabled ? '启用' : '禁用';
     }
     
-    this.updateAppStatus(this.isControlEnabled ? '远程控制已启用' : '远程控制已禁用');
+    this.updateAppStatus(this.isControlEnabled ? '远程控制已启用（包括物理键盘）' : '远程控制已禁用');
+  }
+
+  // 启用全局键盘控制
+  enableGlobalKeyboardControl() {
+    // 如果已经有监听器，先移除
+    this.disableGlobalKeyboardControl();
+    
+    // 创建全局键盘事件处理器
+    this.globalKeyDownHandler = (e) => {
+      // 防止在输入框中触发全局键盘控制
+      if (this.isInputElement(e.target)) {
+        return;
+      }
+      
+      this.handleGlobalKeyDown(e);
+    };
+    
+    this.globalKeyUpHandler = (e) => {
+      // 防止在输入框中触发全局键盘控制
+      if (this.isInputElement(e.target)) {
+        return;
+      }
+      
+      this.handleGlobalKeyUp(e);
+    };
+    
+    // 在文档级别添加键盘事件监听器
+    document.addEventListener('keydown', this.globalKeyDownHandler, true);
+    document.addEventListener('keyup', this.globalKeyUpHandler, true);
+    
+    // 更新调试信息
+    if (this.dom.globalKeyboardStatus) {
+      this.dom.globalKeyboardStatus.textContent = '启用';
+    }
+    
+    console.log('[全局键盘] 已启用全局键盘监听');
+  }
+
+  // 禁用全局键盘控制
+  disableGlobalKeyboardControl() {
+    if (this.globalKeyDownHandler) {
+      document.removeEventListener('keydown', this.globalKeyDownHandler, true);
+      this.globalKeyDownHandler = null;
+    }
+    
+    if (this.globalKeyUpHandler) {
+      document.removeEventListener('keyup', this.globalKeyUpHandler, true);
+      this.globalKeyUpHandler = null;
+    }
+    
+    // 更新调试信息
+    if (this.dom.globalKeyboardStatus) {
+      this.dom.globalKeyboardStatus.textContent = '禁用';
+    }
+    
+    console.log('[全局键盘] 已禁用全局键盘监听');
+  }
+
+  // 检查是否为输入元素
+  isInputElement(element) {
+    if (!element) return false;
+    
+    const inputTypes = ['INPUT', 'TEXTAREA', 'SELECT'];
+    if (inputTypes.includes(element.tagName)) return true;
+    
+    // 检查是否为可编辑元素
+    if (element.contentEditable === 'true') return true;
+    
+    // 检查虚拟键盘的文本输入框
+    if (element.id === 'textInput') return true;
+    
+    return false;
+  }
+
+  // 全局键盘按下处理器
+  handleGlobalKeyDown(e) {
+    if (!this.isControlEnabled) return;
+    
+    // 某些特殊键需要阻止默认行为
+    const specialKeys = ['Tab', 'F5', 'F11', 'F12', 'Alt', 'Control', 'Meta'];
+    if (specialKeys.includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    console.log('[全局键盘按下]', { 
+      key: e.key, 
+      code: e.code, 
+      ctrlKey: e.ctrlKey, 
+      altKey: e.altKey, 
+      shiftKey: e.shiftKey, 
+      metaKey: e.metaKey,
+      target: e.target.tagName
+    });
+
+    const command = {
+      type: 'keydown',
+      key: e.key,
+      code: e.code,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      clientPlatform: window.electronAPI.platform,
+      source: 'global' // 标记这是全局键盘事件
+    };
+
+    p2p.sendControlCommand(command);
+  }
+
+  // 全局键盘释放处理器
+  handleGlobalKeyUp(e) {
+    if (!this.isControlEnabled) return;
+    
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+
+    console.log('[全局键盘释放]', { 
+      key: e.key, 
+      code: e.code,
+      target: e.target.tagName
+    });
+
+    const command = {
+      type: 'keyup',
+      key: e.key,
+      code: e.code,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      clientPlatform: window.electronAPI.platform,
+      source: 'global' // 标记这是全局键盘事件
+    };
+
+    p2p.sendControlCommand(command);
   }
 
   // 添加调试功能
@@ -1319,12 +1478,23 @@ class ScreenShareApp {
       textSpan.textContent = '键盘已显示';
       this.dom.toggleKeyboard.classList.add('control-enabled');
       this.dom.virtualKeyboard.style.display = 'block';
+      
+      // 显示全局键盘提示（仅在控制模式启用时）
+      if (this.dom.keyboardNotice && this.isControlEnabled) {
+        this.dom.keyboardNotice.style.display = 'block';
+      }
+      
       this.updatePlatformSpecificShortcuts();
     } else {
       iconSpan.textContent = '⌨️';
       textSpan.textContent = '键盘';
       this.dom.toggleKeyboard.classList.remove('control-enabled');
       this.dom.virtualKeyboard.style.display = 'none';
+      
+      // 隐藏全局键盘提示
+      if (this.dom.keyboardNotice) {
+        this.dom.keyboardNotice.style.display = 'none';
+      }
     }
     
     this.updateAppStatus(this.isKeyboardVisible ? '虚拟键盘已显示' : '虚拟键盘已隐藏');
