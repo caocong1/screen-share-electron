@@ -52,11 +52,39 @@ ipcMain.handle('get-desktop-sources', async () => {
       types: ['screen', 'window'],
       thumbnailSize: { width: 200, height: 150 }
     });
-    return sources.map(source => ({
-      id: source.id,
-      name: source.name,
-      thumbnail: source.thumbnail.toDataURL()
-    }));
+    
+    // 获取所有屏幕的详细信息
+    const { screen } = require('electron');
+    const allDisplays = screen.getAllDisplays();
+    
+    return sources.map(source => {
+      let screenInfo = null;
+      
+      // 如果是屏幕源，查找对应的显示器信息
+      if (source.id.startsWith('screen:')) {
+        // 提取屏幕ID (格式通常是 "screen:0:0" 或类似)
+        const screenMatch = source.id.match(/screen:(\d+)/);
+        if (screenMatch) {
+          const screenIndex = parseInt(screenMatch[1]);
+          const display = allDisplays[screenIndex];
+          if (display) {
+            screenInfo = {
+              bounds: display.bounds,          // { x, y, width, height }
+              workArea: display.workArea,      // 工作区域
+              scaleFactor: display.scaleFactor, // 缩放因子
+              isPrimary: display.id === screen.getPrimaryDisplay().id
+            };
+          }
+        }
+      }
+      
+      return {
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL(),
+        screenInfo: screenInfo  // 新增屏幕信息
+      };
+    });
   } catch (error) {
     console.error('获取桌面源失败:', error);
     return [];
@@ -83,15 +111,52 @@ ipcMain.on('remote-control', (event, data) => {
     switch (data.type) {
       case 'mousemove':
         if (typeof data.x === 'number' && typeof data.y === 'number') {
-          robot.moveMouse(Math.round(data.x), Math.round(data.y));
+          let actualX = data.x;
+          let actualY = data.y;
+          
+          // 如果有屏幕信息，计算实际的全局坐标
+          if (data.screenInfo && data.screenInfo.bounds) {
+            const bounds = data.screenInfo.bounds;
+            actualX = bounds.x + data.x;
+            actualY = bounds.y + data.y;
+            console.log(`[多屏幕] 原始坐标: (${data.x}, ${data.y}), 屏幕偏移: (${bounds.x}, ${bounds.y}), 实际坐标: (${actualX}, ${actualY})`);
+          }
+          
+          robot.moveMouse(Math.round(actualX), Math.round(actualY));
         }
         break;
 
       case 'mouseclick':
+        // 对于点击，需要先移动到正确位置再点击
+        if (data.x !== undefined && data.y !== undefined) {
+          let actualX = data.x;
+          let actualY = data.y;
+          
+          if (data.screenInfo && data.screenInfo.bounds) {
+            const bounds = data.screenInfo.bounds;
+            actualX = bounds.x + data.x;
+            actualY = bounds.y + data.y;
+          }
+          
+          robot.moveMouse(Math.round(actualX), Math.round(actualY));
+        }
         robot.mouseClick(data.button || 'left', data.double || false);
         break;
 
       case 'mousedown':
+        // 对于鼠标按下，也需要考虑位置
+        if (data.x !== undefined && data.y !== undefined) {
+          let actualX = data.x;
+          let actualY = data.y;
+          
+          if (data.screenInfo && data.screenInfo.bounds) {
+            const bounds = data.screenInfo.bounds;
+            actualX = bounds.x + data.x;
+            actualY = bounds.y + data.y;
+          }
+          
+          robot.moveMouse(Math.round(actualX), Math.round(actualY));
+        }
         robot.mouseToggle('down', data.button || 'left');
         break;
 

@@ -294,11 +294,20 @@ class ScreenShareApp {
           el.classList.add('selected');
           this.selectedSourceEl = el;
           this.selectedSourceId = source.id;
+          this.selectedScreenInfo = source.screenInfo; // 保存屏幕信息
           this.dom.startScreenShare.disabled = false;
         };
+        // 构建显示名称，包含屏幕信息
+        let displayName = source.name;
+        if (source.screenInfo) {
+          const { bounds, isPrimary } = source.screenInfo;
+          const primaryText = isPrimary ? ' (主屏幕)' : '';
+          displayName = `${source.name}${primaryText} - ${bounds.width}×${bounds.height}`;
+        }
+
         el.innerHTML = `
           <img src="${source.thumbnail}" alt="${source.name}">
-          <div class="source-name">${source.name}</div>
+          <div class="source-name">${displayName}</div>
         `;
         this.dom.screenSources.appendChild(el);
       });
@@ -351,6 +360,11 @@ class ScreenShareApp {
     this.dom.startScreenShare.onclick = this.startSharing.bind(this);
     this.updateAppStatus('就绪');
     this.updateParticipantsList();
+    
+    // 清空选中的屏幕信息
+    this.selectedSourceId = null;
+    this.selectedScreenInfo = null;
+    this.selectedSourceEl = null;
   }
   
   updateParticipantsList() {
@@ -503,7 +517,12 @@ class ScreenShareApp {
     p2p.addEventListener('control', ({ detail: command }) => {
       // 安全检查：确保只有在分享状态下才执行控制
       if (this.localStream) {
-        window.electronAPI.sendRemoteControl(command);
+        // 添加当前分享屏幕的信息到控制指令
+        const enrichedCommand = {
+          ...command,
+          screenInfo: this.selectedScreenInfo
+        };
+        window.electronAPI.sendRemoteControl(enrichedCommand);
       }
     });
 
@@ -532,12 +551,9 @@ class ScreenShareApp {
     this.dom.toggleControl.classList.toggle('active', this.isControlEnabled);
     this.updateAppStatus(this.isControlEnabled ? '远程控制已启用' : '远程控制已禁用');
   }
-  
-  handleRemoteMouseMove(e) {
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value; // 假设只连接一个
-    if (!p2p) return;
 
+  // 计算视频坐标到屏幕坐标的映射
+  calculateVideoCoordinates(e) {
     const video = this.dom.remoteVideo;
     const rect = video.getBoundingClientRect();
     const videoRatio = video.videoWidth / video.videoHeight;
@@ -557,16 +573,28 @@ class ScreenShareApp {
     const x = (e.clientX - rect.left - offsetX) * scale;
     const y = (e.clientY - rect.top - offsetY) * scale;
 
-    if (x >= 0 && x <= video.videoWidth && y >= 0 && y <= video.videoHeight) {
-      p2p.sendControlCommand({ type: 'mousemove', x, y });
+    return { x, y, valid: x >= 0 && x <= video.videoWidth && y >= 0 && y <= video.videoHeight };
+  }
+  
+  handleRemoteMouseMove(e) {
+    if (!this.isControlEnabled) return;
+    const p2p = this.p2pConnections.values().next().value; // 假设只连接一个
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (coords.valid) {
+      p2p.sendControlCommand({ type: 'mousemove', x: coords.x, y: coords.y });
     }
   }
   
   handleRemoteMouseClick(e) {
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
-    if (p2p) {
-      p2p.sendControlCommand({ type: 'mouseclick', button: 'left' });
+    if (!p2p) return;
+
+    const coords = this.calculateVideoCoordinates(e);
+    if (coords.valid) {
+      p2p.sendControlCommand({ type: 'mouseclick', button: 'left', x: coords.x, y: coords.y });
     }
   }
   
