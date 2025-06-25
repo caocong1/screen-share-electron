@@ -174,18 +174,34 @@ body {
   font-weight: 500;
 }
 
+/* 返回按钮重新设计 */
 .back-btn {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  padding: 0.6rem 1.2rem;
+  border-radius: 25px;
   cursor: pointer;
   transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 80px;
+  justify-content: center;
 }
 
 .back-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.back-btn:active {
+  transform: translateY(0);
 }
 
 /* 内容区域 */
@@ -214,6 +230,29 @@ body {
 .screen-selection h3 {
   margin-bottom: 1rem;
   color: #343a40;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* 按钮容器 */
+.button-container {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.participants-list {
+  margin-top: 2rem;
+}
+
+.participants-list h3 {
+  color: #343a40;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
 }
 
 .screen-sources {
@@ -362,28 +401,73 @@ body {
   border: 1px solid #2196f3;
 }
 
+/* 连接按钮重新设计 */
 .connect-btn {
-  background: #007bff;
+  background: linear-gradient(135deg, #007bff, #0056b3);
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  padding: 0.6rem 1.2rem;
+  border-radius: 25px;
   font-size: 0.875rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 80px;
+  min-width: 90px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 3px 10px rgba(0, 123, 255, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.connect-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.connect-btn:hover::before {
+  left: 100%;
 }
 
 .connect-btn:hover {
-  background: #0056b3;
-  transform: translateY(-2px);
+  background: linear-gradient(135deg, #0056b3, #004085);
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4);
+}
+
+.connect-btn:active {
+  transform: translateY(-1px);
 }
 
 .connect-btn.disabled {
-  background: #e9ecef;
+  background: linear-gradient(135deg, #e9ecef, #dee2e6);
   color: #adb5bd;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
+}
+
+.connect-btn.disabled::before {
+  display: none;
+}
+
+/* 观看按钮变体 */
+.connect-btn.watch {
+  background: linear-gradient(135deg, #17a2b8, #6f42c1);
+  box-shadow: 0 3px 10px rgba(23, 162, 184, 0.3);
+}
+
+.connect-btn.watch:hover {
+  background: linear-gradient(135deg, #138496, #5a32a3);
+  box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
 }
 
 /* 视频容器 */
@@ -424,72 +508,212 @@ body {
   50% { opacity: 0.5; }
 }
 
-/* 控制按钮 */
-.view-controls {
+/* 控制按钮区域 */
+.view-header {
+  background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+  padding: 1.5rem 2rem;
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+.view-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 1.5rem;
+}
+
+.view-info h2 {
+  color: white;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 
+.view-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* 重新设计的控制按钮 */
 .control-btn {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.7rem 1.2rem;
+  border-radius: 25px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  backdrop-filter: blur(10px);
+  min-width: 100px;
+  justify-content: center;
+  text-align: center;
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
+.control-btn:active {
+  transform: translateY(0);
+}
+
+/* 启用控制按钮样式 */
+.control-btn.control-enabled {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  border-color: #28a745;
+  color: white;
+}
+
+.control-btn.control-enabled:hover {
+  background: linear-gradient(135deg, #218838, #1ca085);
+  box-shadow: 0 5px 20px rgba(40, 167, 69, 0.4);
+}
+
+/* 全屏按钮样式 */
+.control-btn.fullscreen-btn {
+  background: linear-gradient(135deg, #6f42c1, #5a32a3);
+  border-color: #6f42c1;
+  color: white;
+}
+
+.control-btn.fullscreen-btn:hover {
+  background: linear-gradient(135deg, #5e38a3, #4c2a85);
+  box-shadow: 0 5px 20px rgba(111, 66, 193, 0.4);
+}
+
+/* 危险按钮样式 (停止) */
 .control-btn.danger {
-  background: rgba(220, 53, 69, 0.8);
-  border-color: rgba(220, 53, 69, 0.5);
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  border-color: #dc3545;
+  color: white;
 }
 
 .control-btn.danger:hover {
-  background: rgba(220, 53, 69, 1);
+  background: linear-gradient(135deg, #c82333, #bd2130);
+  box-shadow: 0 5px 20px rgba(220, 53, 69, 0.4);
 }
 
-/* 通用按钮 */
+/* 按钮图标 */
+.control-btn .btn-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.control-btn .btn-text {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+/* 通用按钮重新设计 */
 .action-btn {
-  background: #007bff;
+  background: linear-gradient(135deg, #007bff, #0056b3);
   color: white;
   border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 25px;
+  padding: 0.8rem 2rem;
+  border-radius: 30px;
   font-size: 1rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 120px;
+  min-width: 140px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.action-btn:hover::before {
+  left: 100%;
 }
 
 .action-btn:hover {
-  background: #0056b3;
-  transform: translateY(-2px);
+  background: linear-gradient(135deg, #0056b3, #004085);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+}
+
+.action-btn:active {
+  transform: translateY(-1px);
 }
 
 .action-btn:disabled {
-  background: #6c757d;
+  background: linear-gradient(135deg, #6c757d, #5a6268);
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
+.action-btn:disabled::before {
+  display: none;
+}
+
+/* 成功按钮变体 */
+.action-btn.success {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2);
+}
+
+.action-btn.success:hover {
+  background: linear-gradient(135deg, #218838, #1ca085);
+  box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+/* 次要按钮重新设计 */
 .secondary-btn {
-  background: #6c757d;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  background: rgba(108, 117, 125, 0.1);
+  color: #495057;
+  border: 2px solid #dee2e6;
+  padding: 0.6rem 1.2rem;
+  border-radius: 25px;
   cursor: pointer;
   transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+  min-width: 100px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .secondary-btn:hover {
-  background: #5a6268;
+  background: rgba(108, 117, 125, 0.15);
+  border-color: #adb5bd;
+  color: #343a40;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 /* 状态栏 */
@@ -575,5 +799,51 @@ body {
   
   .screen-sources {
     grid-template-columns: 1fr;
+  }
+  
+  /* 移动端按钮优化 */
+  .view-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .view-controls {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .control-btn {
+    min-width: 80px;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.8rem;
+  }
+  
+  .control-btn .btn-text {
+    display: none; /* 在小屏幕上只显示图标 */
+  }
+  
+  .action-btn {
+    min-width: 120px;
+    padding: 0.7rem 1.5rem;
+  }
+  
+  .user-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .user-info {
+    width: 100%;
+  }
+  
+  .user-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .button-container {
+    justify-content: center;
   }
 }

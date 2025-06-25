@@ -42,7 +42,10 @@
             <section class="host-panel" id="hostPanel" style="display: none;">
                 <div class="panel-header">
                     <h2>📺 屏幕分享主机</h2>
-                    <button class="back-btn" id="backFromHost">返回</button>
+                    <button class="back-btn" id="backFromHost">
+                        <span class="btn-icon">←</span>
+                        <span class="btn-text">返回</span>
+                    </button>
                 </div>
                 
                 <div class="host-content">
@@ -54,7 +57,12 @@
                     <div class="screen-selection">
                         <h3>选择要分享的屏幕:</h3>
                         <div id="screenSources" class="screen-sources"></div>
-                        <button id="startScreenShare" class="action-btn" disabled>开始屏幕分享</button>
+                        <div class="button-container">
+                            <button id="startScreenShare" class="action-btn success" disabled>
+                                <span class="btn-icon">▶️</span>
+                                <span class="btn-text">开始屏幕分享</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="participants-list">
@@ -68,7 +76,10 @@
             <section class="guest-panel" id="guestPanel" style="display: none;">
                 <div class="panel-header">
                     <h2>👀 在线用户</h2>
-                    <button class="back-btn" id="backFromGuest">返回</button>
+                    <button class="back-btn" id="backFromGuest">
+                        <span class="btn-icon">←</span>
+                        <span class="btn-text">返回</span>
+                    </button>
                 </div>
                 
                 <div class="guest-content">
@@ -86,9 +97,18 @@
                     <div class="view-info">
                         <h2 id="viewTitle">屏幕共享</h2>
                         <div class="view-controls">
-                            <button id="toggleControl" class="control-btn">🎮 启用控制</button>
-                            <button id="toggleFullscreen" class="control-btn">⛶ 全屏</button>
-                            <button id="stopViewing" class="control-btn danger">⏹️ 停止</button>
+                            <button id="toggleControl" class="control-btn">
+                                <span class="btn-icon">🎮</span>
+                                <span class="btn-text">启用控制</span>
+                            </button>
+                            <button id="toggleFullscreen" class="control-btn fullscreen-btn">
+                                <span class="btn-icon">⛶</span>
+                                <span class="btn-text">全屏</span>
+                            </button>
+                            <button id="stopViewing" class="control-btn danger">
+                                <span class="btn-icon">⏹️</span>
+                                <span class="btn-text">停止</span>
+                            </button>
                         </div>
                     </div>
                 </div>

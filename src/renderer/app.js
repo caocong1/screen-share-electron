@@ -338,7 +338,10 @@ class ScreenShareApp {
           }
         }
       });
-      this.dom.startScreenShare.textContent = '停止分享';
+      const iconSpan = this.dom.startScreenShare.querySelector('.btn-icon');
+      const textSpan = this.dom.startScreenShare.querySelector('.btn-text');
+      iconSpan.textContent = '⏹️';
+      textSpan.textContent = '停止分享';
       this.dom.startScreenShare.onclick = this.stopSharing.bind(this);
       
       this.signal.send({ type: 'announce-host' });
@@ -358,7 +361,10 @@ class ScreenShareApp {
     this.signal.send({ type: 'stop-hosting' });
     Object.values(this.p2pConnections).forEach(conn => conn.close());
     this.p2pConnections.clear();
-    this.dom.startScreenShare.textContent = '开始屏幕分享';
+    const iconSpan = this.dom.startScreenShare.querySelector('.btn-icon');
+    const textSpan = this.dom.startScreenShare.querySelector('.btn-text');
+    iconSpan.textContent = '▶️';
+    textSpan.textContent = '开始屏幕分享';
     this.dom.startScreenShare.onclick = this.startSharing.bind(this);
     this.updateAppStatus('就绪');
     this.updateParticipantsList();
@@ -442,7 +448,10 @@ class ScreenShareApp {
         </div>
         <div class="user-actions">
           <div class="user-status ${statusClass}">${statusText}</div>
-          <button class="connect-btn${!user.isHosting ? ' disabled' : ''}" ${!user.isHosting ? 'disabled' : ''}>观看</button>
+          <button class="connect-btn${!user.isHosting ? ' disabled' : ''}" ${!user.isHosting ? 'disabled' : ''}>
+            <span class="btn-icon">👀</span>
+            <span class="btn-text">观看</span>
+          </button>
         </div>
       `;
       const connectBtn = el.querySelector('.connect-btn');
@@ -558,8 +567,20 @@ class ScreenShareApp {
   // --- 远程控制 ---
   toggleRemoteControl() {
     this.isControlEnabled = !this.isControlEnabled;
-    this.dom.toggleControl.textContent = this.isControlEnabled ? '✅ 已启用控制' : '🎮 启用控制';
-    this.dom.toggleControl.classList.toggle('active', this.isControlEnabled);
+    
+    const iconSpan = this.dom.toggleControl.querySelector('.btn-icon');
+    const textSpan = this.dom.toggleControl.querySelector('.btn-text');
+    
+    if (this.isControlEnabled) {
+      iconSpan.textContent = '✅';
+      textSpan.textContent = '控制已启用';
+      this.dom.toggleControl.classList.add('control-enabled');
+    } else {
+      iconSpan.textContent = '🎮';
+      textSpan.textContent = '启用控制';
+      this.dom.toggleControl.classList.remove('control-enabled');
+    }
+    
     this.updateAppStatus(this.isControlEnabled ? '远程控制已启用' : '远程控制已禁用');
   }
 
