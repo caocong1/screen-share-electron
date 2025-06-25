@@ -65,41 +65,42 @@ class SignalClient extends EventTarget {
  */
 class ScreenShareApp {
   constructor() {
-    this.userId = `user-${Math.random().toString(36).substring(2, 9)}`;
+    this.userId = null;
+    this.userName = null;
     this.localStream = null;
-    this.p2pConnections = new Map(); // remoteId -> P2PConnection
-    this.hosts = new Map(); // hostId -> hostInfo
+    this.p2pConnections = new Map();
+    this.allUsers = new Map();
     this.isControlEnabled = false;
 
     this.initDomElements();
-    this.initSignalClient();
     this.bindUIEvents();
-    this.initAppStatus();
+    this.initAppAndConnect();
   }
 
   initDomElements() {
     this.dom = {
-      // 页面
+      // Pages
       modeSelection: document.getElementById('modeSelection'),
       hostPanel: document.getElementById('hostPanel'),
       guestPanel: document.getElementById('guestPanel'),
       screenView: document.getElementById('screenView'),
-      // 按钮
+      // Buttons
       hostBtn: document.getElementById('hostBtn'),
       guestBtn: document.getElementById('guestBtn'),
       backFromHost: document.getElementById('backFromHost'),
       backFromGuest: document.getElementById('backFromGuest'),
       startScreenShare: document.getElementById('startScreenShare'),
-      refreshHosts: document.getElementById('refreshHosts'),
+      refreshUsers: document.getElementById('refreshUsers'),
       toggleControl: document.getElementById('toggleControl'),
+      toggleFullscreen: document.getElementById('toggleFullscreen'),
       stopViewing: document.getElementById('stopViewing'),
-      // 显示区域
+      // Display Areas
       screenSources: document.getElementById('screenSources'),
       participantsList: document.getElementById('participantsList'),
       participantCount: document.getElementById('participantCount'),
-      hostsList: document.getElementById('hostsList'),
+      onlineUsersList: document.getElementById('onlineUsersList'),
       remoteVideo: document.getElementById('remoteVideo'),
-      // 状态
+      // Status
       connectionStatus: document.getElementById('connectionStatus'),
       networkInfo: document.getElementById('networkInfo'),
       appStatus: document.getElementById('appStatus'),
@@ -109,6 +110,9 @@ class ScreenShareApp {
   }
 
   initSignalClient() {
+    if (!this.userId) {
+      return;
+    }
     const { secure, host, port, path } = config.signaling;
     const signalUrl = `${secure ? 'wss' : 'ws'}://${host}:${port}${path}`;
     this.signal = new SignalClient(signalUrl);
@@ -124,28 +128,53 @@ class ScreenShareApp {
   }
 
   bindUIEvents() {
-    this.dom.hostBtn.onclick = () => this.showPanel('hostPanel');
-    this.dom.guestBtn.onclick = () => this.showPanel('guestPanel');
-    this.dom.backFromHost.onclick = () => this.showPanel('modeSelection');
-    this.dom.backFromGuest.onclick = () => this.showPanel('modeSelection');
-    this.dom.startScreenShare.onclick = this.startSharing.bind(this);
-    this.dom.refreshHosts.onclick = () => this.signal.send({ type: 'get-hosts' });
-    this.dom.toggleControl.onclick = this.toggleRemoteControl.bind(this);
-    this.dom.stopViewing.onclick = this.stopViewing.bind(this);
+    const BINDINGS = {
+      hostBtn: () => this.showPanel('hostPanel'),
+      guestBtn: () => this.showPanel('guestPanel'),
+      backFromHost: () => this.showPanel('modeSelection'),
+      backFromGuest: () => this.showPanel('modeSelection'),
+      startScreenShare: this.startSharing.bind(this),
+      refreshUsers: () => this.signal.send({ type: 'get-users' }),
+      toggleControl: this.toggleRemoteControl.bind(this),
+      toggleFullscreen: () => {
+        if (this.dom.remoteVideo.requestFullscreen) {
+            this.dom.remoteVideo.requestFullscreen();
+        }
+      },
+      stopViewing: this.stopViewing.bind(this),
+    };
 
-    // 远程视频交互
-    this.dom.remoteVideo.onmousemove = this.handleRemoteMouseMove.bind(this);
-    this.dom.remoteVideo.onclick = this.handleRemoteMouseClick.bind(this);
-    this.dom.remoteVideo.onwheel = this.handleRemoteMouseWheel.bind(this);
+    for (const [id, handler] of Object.entries(BINDINGS)) {
+      if (this.dom[id]) {
+        this.dom[id].onclick = handler;
+      } else {
+        console.error(`[UI BINDING] 关键元素未找到: #${id}`);
+      }
+    }
+    
+    if (this.dom.remoteVideo) {
+        this.dom.remoteVideo.onmousemove = this.handleRemoteMouseMove.bind(this);
+        this.dom.remoteVideo.onclick = this.handleRemoteMouseClick.bind(this);
+        this.dom.remoteVideo.onwheel = this.handleRemoteMouseWheel.bind(this);
+    } else {
+        console.error(`[UI BINDING] 关键元素未找到: #remoteVideo`);
+    }
+  }
+
+  async initAppAndConnect() {
+    await this.initAppStatus();
+    this.initSignalClient();
+    this.showPanel('modeSelection');
   }
 
   async initAppStatus() {
     const { versions, getNetworkInfo } = window.electronAPI;
     this.dom.versionInfo.textContent = `Electron v${versions.electron} | Chromium v${versions.chrome}`;
     const netInfo = await getNetworkInfo();
-    const ip = netInfo.addresses[0]?.address || 'N/A';
-    this.dom.networkInfo.textContent = `${netInfo.hostname} (${ip})`;
-    this.userName = netInfo.hostname || this.userId;
+    const ip = netInfo.addresses[0]?.address || `user-${Math.random().toString(36).substring(2, 9)}`;
+    this.userId = ip;
+    this.userName = `${netInfo.hostname} (${ip})`;
+    this.dom.networkInfo.textContent = this.userName;
   }
 
   showPanel(panelName) {
@@ -166,7 +195,7 @@ class ScreenShareApp {
       if (panelName === 'hostPanel') {
         this.loadScreenSources();
       } else if (panelName === 'guestPanel') {
-        this.signal.send({ type: 'get-hosts' });
+        this.signal.send({ type: 'get-users' });
       } else if (panelName === 'modeSelection') {
         this.stopSharing();
         this.stopViewing();
@@ -193,16 +222,23 @@ class ScreenShareApp {
       case 'registered':
         this.userId = message.id; // 服务器可能会分配一个ID
         break;
+      case 'users-list': // 修改：处理全量用户列表
+        this.updateOnlineUsersList(message.users);
+        break;
+      case 'user-online': // 修改：处理单个用户上线
+        this.addOnlineUser(message.userId);
+        break;
+      case 'user-offline': // 修改：处理单个用户下线
+        this.removeOnlineUser(message.userId);
+        break;
       case 'hosts-list':
-        this.updateHostsList(message.hosts);
+        this.updateHostStatus(message.hosts);
         break;
       case 'host-online':
-        this.hosts.set(message.host.id, message.host);
-        this.updateHostsList(Array.from(this.hosts.values()));
+        this.updateHostStatus([message.host]);
         break;
       case 'host-offline':
-        this.hosts.delete(message.hostId);
-        this.updateHostsList(Array.from(this.hosts.values()));
+        this.updateHostStatus([{ id: message.hostId, isHosting: false }]);
         break;
       case 'offer':
         this.handleOffer(message.from, message.data);
@@ -302,9 +338,10 @@ class ScreenShareApp {
   }
 
   stopSharing() {
+    if (!this.localStream) return;
+
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
-      this.localStream = null;
     }
     this.signal.send({ type: 'stop-hosting' });
     Object.values(this.p2pConnections).forEach(conn => conn.close());
@@ -331,26 +368,66 @@ class ScreenShareApp {
     }
   }
 
-  // --- 访客逻辑 ---
-  updateHostsList(hosts) {
-    this.dom.hostsList.innerHTML = '';
-    if (hosts.length === 0) {
-      this.dom.hostsList.innerHTML = '<p class="no-hosts">暂无可用分享</p>';
+  // --- 访客逻辑 (重构为在线用户列表) ---
+  updateOnlineUsersList(users) {
+    this.allUsers = new Map();
+    users.forEach(id => this.allUsers.set(id, { id, isHosting: false }));
+    this.renderUserList();
+    this.signal.send({ type: 'get-hosts' }); // 获取主机状态
+  }
+
+  addOnlineUser(userId) {
+    if (!this.allUsers) this.allUsers = new Map();
+    this.allUsers.set(userId, { id: userId, isHosting: false });
+    this.renderUserList();
+  }
+
+  removeOnlineUser(userId) {
+    if (this.allUsers) {
+        this.allUsers.delete(userId);
+        this.renderUserList();
+    }
+  }
+
+  updateHostStatus(hosts) {
+      if (!this.allUsers) return;
+      hosts.forEach(host => {
+          const user = this.allUsers.get(host.id);
+          if (user) {
+              user.isHosting = host.isHosting !== false;
+              user.name = host.name;
+          }
+      });
+      this.renderUserList();
+  }
+
+  renderUserList() {
+    const listEl = this.dom.onlineUsersList;
+    listEl.innerHTML = '';
+    if (!this.allUsers || this.allUsers.size === 0) {
+      listEl.innerHTML = '<p class="no-users">暂无其他在线用户</p>';
       return;
     }
-    hosts.forEach(host => {
-      this.hosts.set(host.id, host);
+
+    this.allUsers.forEach(user => {
+      if (user.id === this.userId) return; // 不显示自己
+
       const el = document.createElement('div');
-      el.className = 'host-item';
+      el.className = 'user-item';
+      
+      const statusClass = user.isHosting ? 'hosting' : 'idle';
+      const statusText = user.isHosting ? '正在分享' : '在线';
+
       el.innerHTML = `
-        <div class="host-info">
-          <div class="host-name">${host.name}</div>
-          <div class="host-status">正在分享</div>
+        <div class="user-info">
+          <div class="user-avatar">${(user.name || user.id).charAt(0).toUpperCase()}</div>
+          <div class="user-name">${user.name || user.id}</div>
         </div>
-        <button class="connect-btn">连接</button>
+        <div class="user-status ${statusClass}">${statusText}</div>
+        <button class="connect-btn" ${!user.isHosting ? 'disabled' : ''}>观看</button>
       `;
-      el.querySelector('.connect-btn').onclick = () => this.connectToHost(host.id);
-      this.dom.hostsList.appendChild(el);
+      el.querySelector('.connect-btn').onclick = () => this.connectToHost(user.id);
+      listEl.appendChild(el);
     });
   }
 
@@ -367,19 +444,23 @@ class ScreenShareApp {
     p2p.addEventListener('stream', ({ detail: stream }) => {
       this.dom.remoteVideo.srcObject = stream;
       this.showPanel('screenView');
-      this.dom.viewTitle.textContent = `正在观看 ${this.hosts.get(hostId)?.name || hostId} 的屏幕`;
+      const host = this.allUsers.get(hostId);
+      this.dom.viewTitle.textContent = `正在观看 ${host?.name || hostId} 的屏幕`;
     });
     p2p.addEventListener('close', () => this.showPanel('guestPanel'));
+    
+    // Simplified control handler
     p2p.addEventListener('control', ({ detail: command }) => {
       window.electronAPI.sendRemoteControl(command);
     });
 
-    // 这里访客作为 offer 发起方
-    const offer = await p2p.createOffer(new MediaStream()); // 发送一个空流
+    const offer = await p2p.createOffer(new MediaStream());
     this.signal.send({ type: 'offer', to: hostId, from: this.userId, data: offer });
   }
   
   stopViewing() {
+    if (this.p2pConnections.size === 0) return; // 如果没有在观看，则直接返回
+
     this.p2pConnections.forEach(conn => conn.close());
     this.p2pConnections.clear();
     this.dom.remoteVideo.srcObject = null;
@@ -388,12 +469,11 @@ class ScreenShareApp {
 
   // --- WebRTC 信令处理 ---
   async handleOffer(fromId, offer) {
-    if (!this.localStream) return; // 如果没在分享，则忽略
+    if (!this.localStream) return;
 
     let p2p = this.p2pConnections.get(fromId);
-    if (p2p) {
-      p2p.close();
-    }
+    if (p2p) p2p.close();
+    
     p2p = new P2PConnection(this.userId, fromId);
     this.p2pConnections.set(fromId, p2p);
     this.updateParticipantsList();
@@ -405,9 +485,10 @@ class ScreenShareApp {
       this.p2pConnections.delete(fromId);
       this.updateParticipantsList();
     });
+    
+    // No need for a control listener here, as host only sends video
 
     const answer = await p2p.createAnswer(offer);
-    // 把本地屏幕流加入连接
     this.localStream.getTracks().forEach(track => p2p.pc.addTrack(track, this.localStream));
     this.signal.send({ type: 'answer', to: fromId, from: this.userId, data: answer });
   }

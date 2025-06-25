@@ -21,7 +21,7 @@
 
         <!-- 主要内容区域 -->
         <main class="main-content">
-            <!-- 模式选择 -->
+            <!-- 模式选择 (初始隐藏) -->
             <section class="mode-selection" id="modeSelection">
                 <div class="mode-card">
                     <div class="mode-icon">📺</div>
@@ -67,22 +67,16 @@
             <!-- 访客面板 -->
             <section class="guest-panel" id="guestPanel" style="display: none;">
                 <div class="panel-header">
-                    <h2>👀 观看屏幕</h2>
+                    <h2>👀 在线用户</h2>
                     <button class="back-btn" id="backFromGuest">返回</button>
                 </div>
                 
                 <div class="guest-content">
-                    <div class="connection-status">
-                        <span>连接状态: </span>
-                        <span id="guestStatus" class="status-text">连接中...</span>
-                    </div>
-
-                    <div class="available-hosts">
-                        <h3>可连接的用户:</h3>
-                        <div id="hostsList" class="hosts-list">
-                            <p class="no-hosts">正在搜索可用的屏幕分享...</p>
+                    <div class="online-users-container">
+                        <div id="onlineUsersList" class="online-users-list">
+                            <p class="no-users">正在获取用户列表...</p>
                         </div>
-                        <button id="refreshHosts" class="secondary-btn">刷新</button>
+                        <button id="refreshUsers" class="secondary-btn">刷新列表</button>
                     </div>
                 </div>
             </section>

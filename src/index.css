@@ -247,57 +247,48 @@ body {
   font-weight: 500;
 }
 
-/* 参与者列表 */
-.participants-list {
-  margin-top: 2rem;
+/* 新增：ID 设置区域 */
+.id-section {
+  max-width: 500px;
+  margin: 4rem auto;
 }
 
-.participants-list h3 {
-  margin-bottom: 1rem;
-  color: #343a40;
+.id-input-wrapper {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
 }
 
-.participants {
-  list-style: none;
-  background: #f8f9fa;
-  border-radius: 8px;
+.id-input-wrapper input {
+  flex-grow: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 25px;
+  border: 1px solid #ced4da;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.id-input-wrapper input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+}
+
+/* 主机列表 (修改为在线用户列表) */
+.online-users-container {
   padding: 1rem;
-  min-height: 100px;
 }
 
-.participant-item {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.participant-item:last-child {
-  border-bottom: none;
-}
-
-.participant-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #007bff, #6f42c1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  margin-right: 0.75rem;
-}
-
-/* 主机列表 */
-.hosts-list {
+.online-users-list {
   background: #f8f9fa;
   border-radius: 8px;
   padding: 1rem;
   min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.host-item {
+.user-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -305,35 +296,61 @@ body {
   background: white;
   border-radius: 8px;
   margin-bottom: 0.5rem;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
 }
 
-.host-info {
+.user-item:hover {
+  transform: translateX(5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   flex: 1;
 }
 
-.host-name {
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6c757d, #343a40);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.user-name {
   font-weight: 500;
   color: #343a40;
 }
 
-.host-status {
-  font-size: 0.875rem;
-  color: #28a745;
-}
-
-.connect-btn {
-  background: #007bff;
+.user-status {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
   color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  margin-left: auto; /* Pushes to the right */
 }
 
-.connect-btn:hover {
-  background: #0056b3;
+.user-status.hosting {
+  background: #28a745;
+}
+
+.user-status.idle {
+  background: #6c757d;
+  opacity: 0.7;
+}
+
+.connect-btn.disabled {
+  background: #e9ecef;
+  color: #adb5bd;
+  cursor: not-allowed;
 }
 
 /* 视频容器 */
