@@ -154,7 +154,15 @@ function transformCoordinates(data) {
     
     // 只在非鼠标移动事件时打印调试信息
     if (data.type !== 'mousemove' && data.type !== 'mousedrag') {
-      console.log('[坐标转换]', debugInfo);
+      console.log('[坐标转换] 详细信息:', debugInfo);
+    } else if (Math.random() < 0.001) {
+      // 偶尔打印鼠标移动的坐标转换信息用于调试
+      console.log('[坐标转换] 鼠标移动采样:', {
+        originalCoords: debugInfo.originalCoords,
+        finalCoords: debugInfo.finalCoords,
+        scaleFactors: debugInfo.scaleFactors,
+        platforms: `${debugInfo.clientPlatform} -> ${debugInfo.serverPlatform}`
+      });
     }
   } else if (data.screenInfo && data.screenInfo.bounds) {
     // 兜底逻辑：如果没有视频分辨率信息，使用原有逻辑
@@ -181,7 +189,13 @@ ipcMain.on('remote-control', (event, data) => {
     robot.setMouseDelay(2);
     robot.setKeyboardDelay(10);
 
-    console.log('[远程控制] 执行命令:', data.type);
+    console.log('[远程控制] 执行命令:', {
+      type: data.type,
+      hasVideoResolution: !!(data.videoResolution),
+      hasScreenInfo: !!(data.screenInfo),
+      clientPlatform: data.clientPlatform,
+      serverPlatform: process.platform
+    });
 
     switch (data.type) {
       case 'mousemove':

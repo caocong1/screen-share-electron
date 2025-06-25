@@ -325,6 +325,16 @@ function handleRegister(ws, message) {
 
 	// 同时，将当前所有主机信息发给新用户
 	const hosts = getOnlineHostsList();
+	console.log(`[HOSTS-INFO] 向新用户 ${userId} 发送主机列表:`, {
+		hostsCount: hosts.length,
+		hosts: hosts.map(h => ({
+			id: h.id,
+			hasScreenInfo: !!h.screenInfo,
+			screenBounds: h.screenInfo?.bounds,
+			scaleFactor: h.screenInfo?.scaleFactor
+		}))
+	});
+	
 	ws.send(JSON.stringify({
 		type: "hosts-list",
 		hosts: hosts
@@ -445,8 +455,15 @@ function handleAnnounceHost(ws, message = {}) {
 		// 存储屏幕信息
 		if (message.screenInfo) {
 			userInfo.screenInfo = message.screenInfo;
+			console.log(`[SCREEN-INFO] 用户 ${userId} 分享屏幕信息:`, {
+				bounds: message.screenInfo.bounds,
+				scaleFactor: message.screenInfo.scaleFactor,
+				isPrimary: message.screenInfo.isPrimary,
+				workArea: message.screenInfo.workArea
+			});
+		} else {
+			console.log(`[SCREEN-INFO] 用户 ${userId} 开始分享屏幕但未提供屏幕信息`);
 		}
-		console.log(`用户 ${userId} 开始分享屏幕`, message.screenInfo ? '(包含屏幕信息)' : '');
 
 		// 向所有其他用户广播新主机上线，包含屏幕信息
 		const hostInfo = {
@@ -457,10 +474,18 @@ function handleAnnounceHost(ws, message = {}) {
 			hostInfo.screenInfo = message.screenInfo;
 		}
 
-		broadcastToAll({
+		const broadcastMessage = {
 			type: "host-online",
 			host: hostInfo
-		}, userId);
+		};
+
+		console.log(`[BROADCAST] 向所有用户广播主机上线:`, {
+			hostId: userId,
+			hasScreenInfo: !!message.screenInfo,
+			onlineUsersCount: onlineUsers.size - 1 // 排除自己
+		});
+
+		broadcastToAll(broadcastMessage, userId);
 	}
 }
 

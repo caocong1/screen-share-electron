@@ -412,6 +412,7 @@ class ScreenShareApp {
       textSpan.textContent = '停止分享';
       this.dom.startScreenShare.onclick = this.stopSharing.bind(this);
       
+      console.log('[SCREEN-SHARE] 发送主机宣告，屏幕信息:', this.selectedScreenInfo);
       this.signal.send({ 
         type: 'announce-host',
         screenInfo: this.selectedScreenInfo
@@ -485,11 +486,17 @@ class ScreenShareApp {
 
   updateHostStatus(hosts) {
       if (!this.allUsers) return;
+      console.log('[HOST-STATUS] 更新主机状态:', hosts);
       hosts.forEach(host => {
           const user = this.allUsers.get(host.id);
           if (user) {
               user.isHosting = host.isHosting !== false;
               user.name = host.name;
+              // 更新屏幕信息
+              if (host.screenInfo) {
+                  user.screenInfo = host.screenInfo;
+                  console.log(`[HOST-STATUS] 主机 ${host.id} 屏幕信息:`, host.screenInfo);
+              }
           }
       });
       this.renderUserList();
@@ -572,6 +579,9 @@ class ScreenShareApp {
     const host = this.allUsers.get(hostId);
     if (host && host.screenInfo) {
       p2p.remoteScreenInfo = host.screenInfo;
+      console.log(`[VIEWER] 连接到主机 ${hostId}，获取屏幕信息:`, host.screenInfo);
+    } else {
+      console.log(`[VIEWER] 连接到主机 ${hostId}，但没有屏幕信息:`, { host, hasHost: !!host, hasScreenInfo: !!(host?.screenInfo) });
     }
 
     const offer = await p2p.createOffer(new MediaStream());
@@ -828,7 +838,15 @@ class ScreenShareApp {
     if (coords.valid) {
       // 减少日志频率，只在调试模式下每100次打印一次
       if (this.debugMode && Math.random() < 0.01) {
-        console.log('[鼠标移动] 发送坐标:', coords);
+        console.log('[鼠标移动] 发送坐标和屏幕信息:', {
+          coords: coords,
+          videoResolution: {
+            width: this.dom.remoteVideo.videoWidth,
+            height: this.dom.remoteVideo.videoHeight
+          },
+          screenInfo: this.getRemoteScreenInfo(),
+          clientPlatform: window.electronAPI.platform
+        });
       }
       
       // 基础命令对象
@@ -1558,16 +1576,19 @@ class ScreenShareApp {
     // 这个信息在连接建立时应该被传递
     const p2p = this.p2pConnections.values().next().value;
     if (p2p && p2p.remoteScreenInfo) {
+      console.log('[SCREEN-INFO] 从P2P连接获取屏幕信息:', p2p.remoteScreenInfo);
       return p2p.remoteScreenInfo;
     }
     
     // 如果没有存储的远程屏幕信息，尝试从已知的屏幕信息中获取
     // 这通常发生在作为主机时，使用本地选中的屏幕信息
     if (this.selectedScreenInfo) {
+      console.log('[SCREEN-INFO] 使用本地选中屏幕信息:', this.selectedScreenInfo);
       return this.selectedScreenInfo;
     }
     
     // 兜底返回null，坐标转换函数会处理这种情况
+    console.log('[SCREEN-INFO] 警告：没有可用的屏幕信息');
     return null;
   }
 
