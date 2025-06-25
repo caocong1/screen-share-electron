@@ -106,7 +106,16 @@ function cleanupUser(userId) {
 		console.log(`[SERVER-DEBUG] 找到用户信息:`, {
 			userId: userId,
 			wsReadyState: userInfo.ws.readyState,
+			isHosting: userInfo.isHosting,
 		});
+
+		// 如果用户是主机，先通知主机离线
+		if (userInfo.isHosting) {
+			broadcastToAll({
+				type: "host-offline",
+				hostId: userId
+			}, userId);
+		}
 
 		connections.delete(userInfo.ws);
 		onlineUsers.delete(userId);
@@ -209,9 +218,7 @@ function handleMessage(ws, message) {
 			handleUnregister(ws, message);
 			break;
 
-		case "get-users":
-			handleGetUsers(ws, message);
-			break;
+		// get-users 已废弃，改为主动推送
 
 		case "offer":
 		case "answer":
@@ -221,16 +228,14 @@ function handleMessage(ws, message) {
 
 		// 新增：屏幕共享相关API
 		case "announce-host":
-			handleAnnounceHost(ws, message);
+			handleAnnounceHost(ws);
 			break;
 		
 		case "stop-hosting":
 			handleStopHosting(ws, message);
 			break;
 		
-		case "get-hosts":
-			handleGetHosts(ws, message);
-			break;
+		// get-hosts 已废弃，改为主动推送
 
 		default:
 			console.warn("未知消息类型:", message.type);
@@ -287,7 +292,6 @@ function handleRegister(ws, message) {
 	onlineUsers.set(userId, {
 		ws: ws,
 		isHosting: false, // 新增：是否是主机
-		hostName: null // 新增：主机名
 	});
 	connections.set(ws, userId);
 
@@ -360,37 +364,7 @@ function handleUnregister(ws, message) {
 	}
 }
 
-// 处理获取在线用户列表
-function handleGetUsers(ws, message = {}) {
-	const userId = connections.get(ws);
-	if (!userId) {
-		const errorResponse = {
-			type: "error",
-			message: "请先注册用户 ID",
-		};
-		// 如果有requestId，也包含在错误响应中
-		if (message.requestId) {
-			errorResponse.requestId = message.requestId;
-		}
-		ws.send(JSON.stringify(errorResponse));
-		return;
-	}
-
-	// 返回除自己以外的在线用户
-	const users = getOnlineUsersList().filter((id) => id !== userId);
-
-	const response = {
-		type: "users-list",
-		users: users,
-	};
-
-	// 如果请求中包含requestId，在响应中也包含
-	if (message.requestId) {
-		response.requestId = message.requestId;
-	}
-
-	ws.send(JSON.stringify(response));
-}
+// handleGetUsers 已废弃，改为注册时主动推送
 
 // 处理信令消息（offer, answer, ice-candidate）
 function handleSignaling(ws, message) {
@@ -447,7 +421,6 @@ function getOnlineHostsList() {
 		if (userInfo.isHosting) {
 			hosts.push({
 				id: userId,
-				name: userInfo.hostName || userId
 			});
 		}
 	}
@@ -455,22 +428,20 @@ function getOnlineHostsList() {
 }
 
 // 处理主机宣告
-function handleAnnounceHost(ws, message) {
+function handleAnnounceHost(ws) {
 	const userId = connections.get(ws);
 	if (!userId) return;
 
 	const userInfo = onlineUsers.get(userId);
 	if (userInfo) {
 		userInfo.isHosting = true;
-		userInfo.hostName = message.hostName || userId;
-		console.log(`用户 ${userId} (${userInfo.hostName}) 开始分享屏幕`);
+		console.log(`用户 ${userId} 开始分享屏幕`);
 
 		// 向所有其他用户广播新主机上线
 		broadcastToAll({
 			type: "host-online",
 			host: {
 				id: userId,
-				name: userInfo.hostName
 			}
 		}, userId);
 	}
@@ -494,15 +465,7 @@ function handleStopHosting(ws, message) {
 	}
 }
 
-// 处理获取主机列表的请求
-function handleGetHosts(ws, message) {
-	const hosts = getOnlineHostsList();
-	ws.send(JSON.stringify({
-		type: "hosts-list",
-		hosts: hosts,
-		requestId: message.requestId
-	}));
-}
+// handleGetHosts 已废弃，改为注册时主动推送
 
 // 定期统计在线用户
 setInterval(() => {

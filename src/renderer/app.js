@@ -66,7 +66,6 @@ class SignalClient extends EventTarget {
 class ScreenShareApp {
   constructor() {
     this.userId = null;
-    this.userName = null;
     this.localStream = null;
     this.p2pConnections = new Map();
     this.allUsers = new Map();
@@ -105,7 +104,6 @@ class ScreenShareApp {
       connectionStatus: document.getElementById('connectionStatus'),
       networkInfo: document.getElementById('networkInfo'),
       appStatus: document.getElementById('appStatus'),
-      versionInfo: document.getElementById('versionInfo'),
       viewTitle: document.getElementById('viewTitle'),
     };
   }
@@ -135,7 +133,7 @@ class ScreenShareApp {
       backFromHost: () => this.showPanel('modeSelection'),
       backFromGuest: () => this.showPanel('modeSelection'),
       startScreenShare: this.startSharing.bind(this),
-      refreshUsers: () => this.signal.send({ type: 'get-users' }),
+
       toggleControl: this.toggleRemoteControl.bind(this),
       toggleFullscreen: () => {
         if (this.dom.remoteVideo.requestFullscreen) {
@@ -169,13 +167,11 @@ class ScreenShareApp {
   }
 
   async initAppStatus() {
-    const { versions, getNetworkInfo } = window.electronAPI;
-    this.dom.versionInfo.textContent = `Electron v${versions.electron} | Chromium v${versions.chrome}`;
+    const { getNetworkInfo } = window.electronAPI;
     const netInfo = await getNetworkInfo();
     const ip = netInfo.addresses[0]?.address || `user-${Math.random().toString(36).substring(2, 9)}`;
     this.userId = ip;
-    this.userName = `${netInfo.hostname} (${ip})`;
-    this.dom.networkInfo.textContent = this.userName;
+    this.dom.networkInfo.textContent = this.userId;
   }
 
   showPanel(panelName) {
@@ -186,8 +182,16 @@ class ScreenShareApp {
       panels.forEach(p => {
         const panelElement = this.dom[p];
         if (panelElement) {
-          const newDisplay = (p === panelName) ? 'block' : 'none';
-          panelElement.style.display = newDisplay;
+          if (p === panelName) {
+            // 根据面板类型设置正确的显示样式
+            if (p === 'modeSelection') {
+              panelElement.style.display = 'grid'; // 保持grid布局
+            } else {
+              panelElement.style.display = 'block';
+            }
+          } else {
+            panelElement.style.display = 'none';
+          }
         } else {
           console.error(`[UI] Panel element '${p}' not found in this.dom`);
         }
@@ -195,8 +199,6 @@ class ScreenShareApp {
 
       if (panelName === 'hostPanel') {
         this.loadScreenSources();
-      } else if (panelName === 'guestPanel') {
-        this.signal.send({ type: 'get-users' });
       } else if (panelName === 'modeSelection') {
         this.stopSharing();
         this.stopViewing();
@@ -339,7 +341,7 @@ class ScreenShareApp {
       this.dom.startScreenShare.textContent = '停止分享';
       this.dom.startScreenShare.onclick = this.stopSharing.bind(this);
       
-      this.signal.send({ type: 'announce-host', hostName: this.userName });
+      this.signal.send({ type: 'announce-host' });
       this.updateAppStatus(`正在分享屏幕...`);
     } catch (error) {
       console.error('获取媒体流失败:', error);
@@ -388,7 +390,7 @@ class ScreenShareApp {
     this.allUsers = new Map();
     users.forEach(id => this.allUsers.set(id, { id, isHosting: false }));
     this.renderUserList();
-    this.signal.send({ type: 'get-hosts' }); // 获取主机状态
+    // 主机状态会通过 hosts-list 消息自动推送，不需要手动获取
   }
 
   addOnlineUser(userId) {
@@ -438,10 +440,19 @@ class ScreenShareApp {
           <div class="user-avatar">${(user.name || user.id).charAt(0).toUpperCase()}</div>
           <div class="user-name">${user.name || user.id}</div>
         </div>
-        <div class="user-status ${statusClass}">${statusText}</div>
-        <button class="connect-btn" ${!user.isHosting ? 'disabled' : ''}>观看</button>
+        <div class="user-actions">
+          <div class="user-status ${statusClass}">${statusText}</div>
+          <button class="connect-btn${!user.isHosting ? ' disabled' : ''}" ${!user.isHosting ? 'disabled' : ''}>观看</button>
+        </div>
       `;
-      el.querySelector('.connect-btn').onclick = () => this.connectToHost(user.id);
+      const connectBtn = el.querySelector('.connect-btn');
+      if (user.isHosting) {
+        connectBtn.onclick = () => this.connectToHost(user.id);
+      } else {
+        connectBtn.onclick = () => {
+          console.log(`用户 ${user.id} 未在分享屏幕，无法连接`);
+        };
+      }
       listEl.appendChild(el);
     });
   }

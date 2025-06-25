@@ -18,14 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   manageScreenPermission: () => ipcRenderer.invoke('manage-screen-permission'),
   
   // 平台信息
-  platform: process.platform,
-  
-  // 版本信息
-  versions: {
-    node: process.versions.node,
-    chrome: process.versions.chrome,
-    electron: process.versions.electron
-  }
+  platform: process.platform
 });
 
 // 监听来自主进程的消息

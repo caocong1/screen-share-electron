@@ -49,20 +49,24 @@ body {
 }
 
 .status-indicator {
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.875rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .status-indicator.online {
-  background: #d4edda;
-  color: #155724;
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #2196f3;
 }
 
 .status-indicator.offline {
-  background: #f8d7da;
-  color: #721c24;
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #f44336;
 }
 
 .network-info {
@@ -298,6 +302,7 @@ body {
   margin-bottom: 0.5rem;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease-in-out;
+  gap: 1rem; /* 增加元素间的间距 */
 }
 
 .user-item:hover {
@@ -310,6 +315,12 @@ body {
   align-items: center;
   gap: 1rem;
   flex: 1;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .user-avatar {
@@ -331,26 +342,48 @@ body {
 }
 
 .user-status {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 10px;
-  color: white;
-  margin-left: auto; /* Pushes to the right */
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .user-status.hosting {
-  background: #28a745;
+  background: #e8f5e8;
+  color: #2d5a2d;
+  border: 1px solid #28a745;
 }
 
 .user-status.idle {
-  background: #6c757d;
-  opacity: 0.7;
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #2196f3;
+}
+
+.connect-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.connect-btn:hover {
+  background: #0056b3;
+  transform: translateY(-2px);
 }
 
 .connect-btn.disabled {
   background: #e9ecef;
   color: #adb5bd;
   cursor: not-allowed;
+  transform: none;
 }
 
 /* 视频容器 */
