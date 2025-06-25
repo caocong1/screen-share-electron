@@ -572,7 +572,12 @@ class ScreenShareApp {
     // 为观看端也添加控制事件监听器（虽然通常不会接收控制指令，但确保控制通道正常工作）
     p2p.addEventListener('control', ({ detail: command }) => {
       console.log('[观看端] 接收到控制反馈:', command);
-      // 观看端通常不需要处理控制指令，但这里可以处理一些状态反馈
+      // 修复：处理来自主机的屏幕信息
+      if (command.type === 'screen-info' && command.screenInfo) {
+        p2p.remoteScreenInfo = command.screenInfo;
+        console.log('[VIEWER] 通过数据通道接收到屏幕信息:', command.screenInfo);
+      }
+      // 观看端通常不需要处理其他控制指令，但这里可以处理一些状态反馈
     });
 
     // 尝试从主机信息中获取屏幕信息
@@ -630,6 +635,18 @@ class ScreenShareApp {
           screenInfo: this.selectedScreenInfo
         };
         window.electronAPI.sendRemoteControl(enrichedCommand);
+      }
+    });
+    
+    // 修复：添加数据通道打开事件监听，主动发送屏幕信息
+    p2p.addEventListener('controlopen', () => {
+      // 数据通道打开后，主动发送屏幕信息给观看端
+      if (this.selectedScreenInfo) {
+        console.log('[HOST] 数据通道已打开，发送屏幕信息给观看端:', this.selectedScreenInfo);
+        p2p.sendControlCommand({
+          type: 'screen-info',
+          screenInfo: this.selectedScreenInfo
+        });
       }
     });
     
@@ -1585,6 +1602,26 @@ class ScreenShareApp {
     if (this.selectedScreenInfo) {
       console.log('[SCREEN-INFO] 使用本地选中屏幕信息:', this.selectedScreenInfo);
       return this.selectedScreenInfo;
+    }
+    
+    // 调试：尝试从allUsers中获取当前连接的主机屏幕信息
+    if (p2p && this.allUsers) {
+      const host = this.allUsers.get(p2p.remoteId);
+      if (host && host.screenInfo) {
+        console.log('[SCREEN-INFO] 从用户列表获取屏幕信息:', host.screenInfo);
+        p2p.remoteScreenInfo = host.screenInfo; // 缓存到P2P连接中
+        return host.screenInfo;
+      } else {
+        console.log('[SCREEN-INFO] 调试信息:', {
+          hasP2P: !!p2p,
+          remoteId: p2p?.remoteId,
+          hasAllUsers: !!this.allUsers,
+          hasHost: !!(host),
+          hasHostScreenInfo: !!(host?.screenInfo),
+          allUsersSize: this.allUsers?.size,
+          p2pConnectionsSize: this.p2pConnections.size
+        });
+      }
     }
     
     // 兜底返回null，坐标转换函数会处理这种情况
