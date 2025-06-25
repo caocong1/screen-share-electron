@@ -95,6 +95,9 @@ ipcMain.handle('get-desktop-sources', async () => {
 function transformCoordinates(data) {
   let actualX = data.x;
   let actualY = data.y;
+  console.log('[坐标转换] 原始坐标:', { x: data.x, y: data.y });
+  console.log('[坐标转换] 视频分辨率:', data.videoResolution);
+  console.log('[坐标转换] 屏幕信息:', data.screenInfo);
   
   // 如果有视频分辨率信息，进行精确的坐标映射
   if (data.videoResolution && data.screenInfo && data.screenInfo.bounds) {

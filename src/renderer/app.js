@@ -566,6 +566,13 @@ class ScreenShareApp {
       this.dom.remoteVideo.onplaying = () => {
         this.dom.videoOverlay.style.display = 'none';
       };
+      
+      // 初始化时禁用控制按钮，等待屏幕信息就绪
+      if (this.dom.toggleControl) {
+        this.dom.toggleControl.disabled = true;
+        this.dom.toggleControl.title = '等待屏幕信息...';
+      }
+      this.updateAppStatus('视频流已连接，等待屏幕信息...');
     });
     p2p.addEventListener('close', () => this.showPanel('guestPanel'));
     
@@ -576,6 +583,13 @@ class ScreenShareApp {
       if (command.type === 'screen-info' && command.screenInfo) {
         p2p.remoteScreenInfo = command.screenInfo;
         console.log('[VIEWER] 通过数据通道接收到屏幕信息:', command.screenInfo);
+        
+        // 屏幕信息就绪后，启用控制按钮并给出提示
+        if (this.dom.toggleControl) {
+          this.dom.toggleControl.disabled = false;
+          this.dom.toggleControl.title = '点击启用远程控制';
+        }
+        this.updateAppStatus('屏幕信息已就绪，可以启用远程控制');
       }
       // 观看端通常不需要处理其他控制指令，但这里可以处理一些状态反馈
     });
@@ -673,6 +687,15 @@ class ScreenShareApp {
   
   // --- 远程控制 ---
   toggleRemoteControl() {
+    // 检查是否有可用的屏幕信息
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo && !this.isControlEnabled) {
+      // 如果没有屏幕信息且试图启用控制，给出提示
+      console.warn('[远程控制] 屏幕信息尚未就绪，无法启用控制');
+      this.updateAppStatus('屏幕信息尚未就绪，请稍后再试');
+      return;
+    }
+    
     this.isControlEnabled = !this.isControlEnabled;
     
     const iconSpan = this.dom.toggleControl.querySelector('.btn-icon');
@@ -684,6 +707,7 @@ class ScreenShareApp {
       this.dom.toggleControl.classList.add('control-enabled');
       // 给整个屏幕视图添加控制启用的样式
       this.dom.screenView.classList.add('control-enabled');
+      console.log('[远程控制] 控制已启用，屏幕信息:', screenInfo);
     } else {
       iconSpan.textContent = '🎮';
       textSpan.textContent = '启用控制';
@@ -851,6 +875,13 @@ class ScreenShareApp {
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
 
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[鼠标移动] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
+
     const coords = this.calculateVideoCoordinates(e);
     if (coords.valid) {
       // 减少日志频率，只在调试模式下每100次打印一次
@@ -861,7 +892,7 @@ class ScreenShareApp {
             width: this.dom.remoteVideo.videoWidth,
             height: this.dom.remoteVideo.videoHeight
           },
-          screenInfo: this.getRemoteScreenInfo(),
+          screenInfo: screenInfo,
           clientPlatform: window.electronAPI.platform
         });
       }
@@ -876,7 +907,7 @@ class ScreenShareApp {
           width: this.dom.remoteVideo.videoWidth,
           height: this.dom.remoteVideo.videoHeight
         },
-        screenInfo: this.getRemoteScreenInfo()
+        screenInfo: screenInfo
       };
       
       // 如果正在拖拽，添加拖拽信息
@@ -897,6 +928,13 @@ class ScreenShareApp {
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
+
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[鼠标按下] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
 
     const coords = this.calculateVideoCoordinates(e);
     if (!coords.valid) return;
@@ -935,7 +973,7 @@ class ScreenShareApp {
             width: this.dom.remoteVideo.videoWidth,
             height: this.dom.remoteVideo.videoHeight
           },
-          screenInfo: this.getRemoteScreenInfo()
+          screenInfo: screenInfo
         };
         p2p.sendControlCommand(longPressCommand);
       }
@@ -952,7 +990,7 @@ class ScreenShareApp {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
       },
-      screenInfo: this.getRemoteScreenInfo()
+      screenInfo: screenInfo
     };
 
     p2p.sendControlCommand(command);
@@ -965,6 +1003,13 @@ class ScreenShareApp {
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
+
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[鼠标释放] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
 
     const coords = this.calculateVideoCoordinates(e);
     if (!coords.valid) return;
@@ -994,7 +1039,7 @@ class ScreenShareApp {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
       },
-      screenInfo: this.getRemoteScreenInfo()
+      screenInfo: screenInfo
     };
 
     // 如果是拖拽结束，添加拖拽信息
@@ -1034,6 +1079,13 @@ class ScreenShareApp {
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
 
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[双击] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
+
     const coords = this.calculateVideoCoordinates(e);
     if (!coords.valid) return;
 
@@ -1051,7 +1103,7 @@ class ScreenShareApp {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
       },
-      screenInfo: this.getRemoteScreenInfo()
+      screenInfo: screenInfo
     };
 
     p2p.sendControlCommand(command);
@@ -1064,6 +1116,13 @@ class ScreenShareApp {
     if (!this.isControlEnabled) return;
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
+
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[右键菜单] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
 
     const coords = this.calculateVideoCoordinates(e);
     if (!coords.valid) return;
@@ -1079,7 +1138,7 @@ class ScreenShareApp {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
       },
-      screenInfo: this.getRemoteScreenInfo()
+      screenInfo: screenInfo
     };
 
     p2p.sendControlCommand(command);
