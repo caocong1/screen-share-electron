@@ -186,34 +186,42 @@ function transformCoordinates(data) {
           });
         }
         
-        // 修复：如果视频分辨率与物理分辨率匹配，直接映射到逻辑坐标
-        const physicalWidth = bounds.width * scaleFactor;
-        const physicalHeight = bounds.height * scaleFactor;
+        // 计算相对位置
+        const relativeX = data.x / videoWidth;
+        const relativeY = data.y / videoHeight;
         
-        if (Math.abs(videoWidth - physicalWidth) < 10 && Math.abs(videoHeight - physicalHeight) < 10) {
-          // 视频分辨率匹配物理分辨率，直接映射到逻辑坐标
-          actualX = bounds.x + (data.x / scaleFactor);
-          actualY = bounds.y + (data.y / scaleFactor);
-          
-          debugInfo.mappingType = 'physical-to-logical';
-          debugInfo.directScale = { x: 1/scaleFactor, y: 1/scaleFactor };
-        } else if (Math.abs(videoWidth - bounds.width) < 10 && Math.abs(videoHeight - bounds.height) < 10) {
-          // 视频分辨率匹配逻辑分辨率，直接映射
-          actualX = bounds.x + data.x;
-          actualY = bounds.y + data.y;
-          
-          debugInfo.mappingType = 'logical-to-logical';
-        } else {
-          // 其他情况，按比例映射到逻辑坐标
-          const scaleX = bounds.width / videoWidth;
-          const scaleY = bounds.height / videoHeight;
-          
-          actualX = bounds.x + (data.x * scaleX);
-          actualY = bounds.y + (data.y * scaleY);
-          
-          debugInfo.mappingType = 'proportional';
-          debugInfo.scaleFactors = { scaleX, scaleY };
-        }
+        // 尝试多种映射方式
+        const mappingOptions = {
+          // 方式1：映射到物理分辨率（robotjs使用物理坐标）
+          physical: {
+            x: bounds.x + (relativeX * bounds.width * scaleFactor),
+            y: bounds.y + (relativeY * bounds.height * scaleFactor)
+          },
+          // 方式2：映射到逻辑分辨率（robotjs使用逻辑坐标）
+          logical: {
+            x: bounds.x + (relativeX * bounds.width),
+            y: bounds.y + (relativeY * bounds.height)
+          },
+          // 方式3：直接除以缩放因子（当前方式）
+          directScale: {
+            x: bounds.x + (data.x / scaleFactor),
+            y: bounds.y + (data.y / scaleFactor)
+          }
+        };
+        
+        console.log('[坐标转换] 映射选项测试:', {
+          originalCoords: { x: data.x, y: data.y },
+          relativePosition: { x: relativeX, y: relativeY },
+          mappingOptions: mappingOptions
+        });
+        
+        // 现在尝试使用物理坐标映射（robotjs可能使用物理坐标）
+        actualX = mappingOptions.physical.x;
+        actualY = mappingOptions.physical.y;
+        
+        debugInfo.mappingType = 'relative-to-physical';
+        debugInfo.relativePosition = { x: relativeX, y: relativeY };
+        debugInfo.allMappingOptions = mappingOptions;
       } else {
         // Windows -> Windows: 直接映射
         actualX = bounds.x + data.x;
