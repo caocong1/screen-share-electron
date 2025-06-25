@@ -456,6 +456,12 @@ class ScreenShareApp {
       };
     });
     p2p.addEventListener('close', () => this.showPanel('guestPanel'));
+    
+    // 为观看端也添加控制事件监听器（虽然通常不会接收控制指令，但确保控制通道正常工作）
+    p2p.addEventListener('control', ({ detail: command }) => {
+      console.log('[观看端] 接收到控制反馈:', command);
+      // 观看端通常不需要处理控制指令，但这里可以处理一些状态反馈
+    });
 
     const offer = await p2p.createOffer(new MediaStream());
     this.signal.send({ type: 'offer', to: hostId, from: this.userId, data: offer });
