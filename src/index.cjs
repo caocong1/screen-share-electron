@@ -276,6 +276,60 @@ ipcMain.on('remote-control', (event, data) => {
         }
         break;
 
+      case 'keytype':
+        // 虚拟键盘文本输入
+        if (data.text) {
+          robot.typeString(data.text);
+        }
+        break;
+
+      case 'shortcut':
+        // 虚拟键盘快捷键
+        if (data.key) {
+          const modifiers = [];
+          if (data.ctrlKey) modifiers.push('control');
+          if (data.altKey) modifiers.push('alt');
+          if (data.shiftKey) modifiers.push('shift');
+          if (data.metaKey) modifiers.push(process.platform === 'darwin' ? 'command' : 'meta');
+          
+          // 键名映射
+          const keyMap = {
+            'c': 'c',
+            'v': 'v',
+            'x': 'x',
+            'z': 'z',
+            'y': 'y',
+            'a': 'a',
+            's': 's',
+            'tab': 'tab',
+            'esc': 'escape',
+            'l': 'l',
+            'd': 'd',
+            'r': 'r',
+            'space': 'space'
+          };
+          
+          const robotKey = keyMap[data.key.toLowerCase()] || data.key.toLowerCase();
+          robot.keyTap(robotKey, modifiers);
+          console.log(`[远程控制] 执行快捷键: ${modifiers.join('+')}+${robotKey}`);
+        }
+        break;
+
+      case 'functionkey':
+        // 虚拟键盘功能键
+        if (data.key) {
+          const fKeyMap = {
+            'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4',
+            'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8',
+            'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12'
+          };
+          
+          const robotKey = fKeyMap[data.key] || data.key.toLowerCase();
+          robot.keyTap(robotKey);
+          console.log(`[远程控制] 执行功能键: ${robotKey}`);
+        }
+        break;
+
       default:
         console.warn('[远程控制] 未知命令类型:', data.type);
     }

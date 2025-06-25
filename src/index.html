@@ -105,6 +105,10 @@
                                 <span class="btn-icon">⛶</span>
                                 <span class="btn-text">全屏</span>
                             </button>
+                            <button id="toggleKeyboard" class="control-btn" title="切换虚拟键盘">
+                                <span class="btn-icon">⌨️</span>
+                                <span class="btn-text">键盘</span>
+                            </button>
                             <button id="toggleDebug" class="control-btn" title="切换调试模式">
                                 <span class="btn-icon">🐛</span>
                                 <span class="btn-text">调试</span>
@@ -117,10 +121,25 @@
                     </div>
                 </div>
                 
-                <div class="video-container">
-                    <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-container" id="videoContainer">
+                    <video id="remoteVideo" autoplay playsinline controls="false"></video>
                     <div class="video-overlay" id="videoOverlay">
                         <div class="loading-spinner">连接中...</div>
+                    </div>
+                    <!-- 全屏模式下的浮动控制面板 -->
+                    <div class="fullscreen-controls" id="fullscreenControls">
+                        <button class="control-btn" id="fullscreenToggleControl" title="切换远程控制">
+                            <span class="btn-icon">🎮</span>
+                        </button>
+                        <button class="control-btn" id="fullscreenToggleKeyboard" title="切换虚拟键盘">
+                            <span class="btn-icon">⌨️</span>
+                        </button>
+                        <button class="control-btn" id="fullscreenExitFullscreen" title="退出全屏">
+                            <span class="btn-icon">⛶</span>
+                        </button>
+                        <button class="control-btn danger" id="fullscreenStopViewing" title="停止观看">
+                            <span class="btn-icon">⏹️</span>
+                        </button>
                     </div>
                     <div class="debug-info" id="debugInfo" style="display: none;">
                         <div>本机平台: <span id="clientPlatform">--</span></div>
@@ -130,6 +149,114 @@
                         <div>控制状态: <span id="controlStatus">禁用</span></div>
                         <div>拖拽状态: <span id="dragStatus">无</span></div>
                         <div>远程信息: <span id="remoteInfo">--</span></div>
+                    </div>
+                </div>
+                
+                <!-- 虚拟键盘面板 -->
+                <div class="virtual-keyboard" id="virtualKeyboard" style="display: none;">
+                    <div class="keyboard-header">
+                        <h3>⌨️ 虚拟键盘</h3>
+                        <button class="keyboard-close" id="keyboardClose">×</button>
+                    </div>
+                    
+                    <div class="keyboard-content">
+                        <!-- 快捷键区域 -->
+                        <div class="keyboard-section">
+                            <h4>常用快捷键</h4>
+                            <div class="key-group">
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+c">
+                                    <span class="key-combo" id="copy-shortcut">Ctrl+C</span>
+                                    <span class="key-label">复制</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+v">
+                                    <span class="key-combo" id="paste-shortcut">Ctrl+V</span>
+                                    <span class="key-label">粘贴</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+x">
+                                    <span class="key-combo" id="cut-shortcut">Ctrl+X</span>
+                                    <span class="key-label">剪切</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+z">
+                                    <span class="key-combo" id="undo-shortcut">Ctrl+Z</span>
+                                    <span class="key-label">撤销</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+y">
+                                    <span class="key-combo" id="redo-shortcut">Ctrl+Y</span>
+                                    <span class="key-label">重做</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+a">
+                                    <span class="key-combo" id="selectall-shortcut">Ctrl+A</span>
+                                    <span class="key-label">全选</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="ctrl+s">
+                                    <span class="key-combo" id="save-shortcut">Ctrl+S</span>
+                                    <span class="key-label">保存</span>
+                                </button>
+                                <button class="key-btn shortcut-key" data-shortcut="alt+tab">
+                                    <span class="key-combo" id="alttab-shortcut">Alt+Tab</span>
+                                    <span class="key-label">切换</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 功能键区域 -->
+                        <div class="keyboard-section">
+                            <h4>功能键</h4>
+                            <div class="key-group function-keys">
+                                <button class="key-btn function-key" data-key="F1">F1</button>
+                                <button class="key-btn function-key" data-key="F2">F2</button>
+                                <button class="key-btn function-key" data-key="F3">F3</button>
+                                <button class="key-btn function-key" data-key="F4">F4</button>
+                                <button class="key-btn function-key" data-key="F5">F5</button>
+                                <button class="key-btn function-key" data-key="F6">F6</button>
+                                <button class="key-btn function-key" data-key="F7">F7</button>
+                                <button class="key-btn function-key" data-key="F8">F8</button>
+                                <button class="key-btn function-key" data-key="F9">F9</button>
+                                <button class="key-btn function-key" data-key="F10">F10</button>
+                                <button class="key-btn function-key" data-key="F11">F11</button>
+                                <button class="key-btn function-key" data-key="F12">F12</button>
+                            </div>
+                        </div>
+                        
+                        <!-- 系统操作区域 -->
+                        <div class="keyboard-section">
+                            <h4>系统操作</h4>
+                            <div class="key-group">
+                                <button class="key-btn system-key" data-shortcut="ctrl+shift+esc">
+                                    <span class="key-combo" id="taskmgr-shortcut">Ctrl+Shift+Esc</span>
+                                    <span class="key-label">任务管理器</span>
+                                </button>
+                                <button class="key-btn system-key" data-shortcut="win+l">
+                                    <span class="key-combo" id="lock-shortcut">Win+L</span>
+                                    <span class="key-label">锁屏</span>
+                                </button>
+                                <button class="key-btn system-key" data-shortcut="win+d">
+                                    <span class="key-combo" id="desktop-shortcut">Win+D</span>
+                                    <span class="key-label">显示桌面</span>
+                                </button>
+                                <button class="key-btn system-key" data-shortcut="win+r">
+                                    <span class="key-combo" id="run-shortcut">Win+R</span>
+                                    <span class="key-label">运行</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 文本输入区域 -->
+                        <div class="keyboard-section">
+                            <h4>文本输入</h4>
+                            <div class="text-input-area">
+                                <textarea 
+                                    id="textInput" 
+                                    placeholder="在此输入文本，然后点击发送按钮将文本发送到远程电脑..."
+                                    rows="3"
+                                ></textarea>
+                                <div class="text-actions">
+                                    <button class="key-btn send-text" id="sendText">发送文本</button>
+                                    <button class="key-btn send-enter" id="sendEnter">发送并回车</button>
+                                    <button class="key-btn clear-text" id="clearText">清空</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

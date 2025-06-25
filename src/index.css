@@ -501,6 +501,84 @@ body {
   cursor: crosshair;
 }
 
+/* 全屏模式样式 */
+.video-container:fullscreen {
+  background: #000;
+}
+
+.video-container:fullscreen video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  /* 隐藏所有默认控件 */
+  -webkit-media-controls: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.video-container:fullscreen video::-webkit-media-controls {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-play-button {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-volume-slider {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-timeline {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-current-time-display {
+  display: none !important;
+}
+
+.video-container:fullscreen video::-webkit-media-controls-time-remaining-display {
+  display: none !important;
+}
+
+/* 全屏模式下的浮动控制面板 */
+.fullscreen-controls {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.fullscreen-controls.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.fullscreen-controls .control-btn {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.fullscreen-controls .control-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 .control-enabled .video-container {
   border: 2px solid #28a745;
   border-radius: 10px;
@@ -891,5 +969,224 @@ body {
   
   .button-container {
     justify-content: center;
+  }
+}
+
+/* 虚拟键盘样式 */
+.virtual-keyboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid #333;
+  z-index: 1000;
+  max-height: 50vh;
+  overflow-y: auto;
+  color: white;
+}
+
+.keyboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #333;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.keyboard-header h3 {
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.keyboard-close {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.keyboard-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.keyboard-content {
+  padding: 1rem 1.5rem;
+}
+
+.keyboard-section {
+  margin-bottom: 1.5rem;
+}
+
+.keyboard-section h4 {
+  color: #ccc;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.key-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.key-group.function-keys {
+  gap: 0.3rem;
+}
+
+.key-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.key-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.key-btn:active {
+  transform: translateY(0);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 快捷键按钮 */
+.key-btn.shortcut-key, .key-btn.system-key {
+  flex-direction: column;
+  padding: 0.5rem;
+  min-width: 80px;
+  min-height: 50px;
+  gap: 0.2rem;
+}
+
+.key-combo {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffd700;
+}
+
+.key-label {
+  font-size: 0.7rem;
+  color: #ccc;
+}
+
+/* 功能键按钮 */
+.key-btn.function-key {
+  min-width: 40px;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* 文本输入区域 */
+.text-input-area {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.text-input-area textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.text-input-area textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.3);
+}
+
+.text-input-area textarea::placeholder {
+  color: #aaa;
+}
+
+.text-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.key-btn.send-text, .key-btn.send-enter, .key-btn.clear-text {
+  padding: 0.5rem 1rem;
+  min-height: 36px;
+  background: rgba(0, 123, 255, 0.7);
+  border-color: #007bff;
+}
+
+.key-btn.send-text:hover, .key-btn.send-enter:hover {
+  background: rgba(0, 123, 255, 0.8);
+}
+
+.key-btn.clear-text {
+  background: rgba(220, 53, 69, 0.7);
+  border-color: #dc3545;
+}
+
+.key-btn.clear-text:hover {
+  background: rgba(220, 53, 69, 0.8);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .virtual-keyboard {
+    max-height: 60vh;
+  }
+  
+  .keyboard-content {
+    padding: 0.75rem 1rem;
+  }
+  
+  .key-group {
+    gap: 0.3rem;
+  }
+  
+  .key-btn.shortcut-key, .key-btn.system-key {
+    min-width: 70px;
+    min-height: 45px;
+    font-size: 0.75rem;
+  }
+  
+  .key-combo {
+    font-size: 0.7rem;
+  }
+  
+  .key-label {
+    font-size: 0.65rem;
   }
 }

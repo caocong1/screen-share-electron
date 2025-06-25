@@ -92,6 +92,7 @@ class ScreenShareApp {
       refreshUsers: document.getElementById('refreshUsers'),
       toggleControl: document.getElementById('toggleControl'),
       toggleFullscreen: document.getElementById('toggleFullscreen'),
+      toggleKeyboard: document.getElementById('toggleKeyboard'),
       toggleDebug: document.getElementById('toggleDebug'),
       stopViewing: document.getElementById('stopViewing'),
       // Display Areas
@@ -115,6 +116,20 @@ class ScreenShareApp {
       controlStatus: document.getElementById('controlStatus'),
       dragStatus: document.getElementById('dragStatus'),
       remoteInfo: document.getElementById('remoteInfo'),
+      // Virtual keyboard elements
+      virtualKeyboard: document.getElementById('virtualKeyboard'),
+      keyboardClose: document.getElementById('keyboardClose'),
+      textInput: document.getElementById('textInput'),
+      sendText: document.getElementById('sendText'),
+      sendEnter: document.getElementById('sendEnter'),
+      clearText: document.getElementById('clearText'),
+      // Fullscreen elements
+      videoContainer: document.getElementById('videoContainer'),
+      fullscreenControls: document.getElementById('fullscreenControls'),
+      fullscreenToggleControl: document.getElementById('fullscreenToggleControl'),
+      fullscreenToggleKeyboard: document.getElementById('fullscreenToggleKeyboard'),
+      fullscreenExitFullscreen: document.getElementById('fullscreenExitFullscreen'),
+      fullscreenStopViewing: document.getElementById('fullscreenStopViewing'),
     };
     
     // 初始化调试模式
@@ -150,10 +165,9 @@ class ScreenShareApp {
 
       toggleControl: this.toggleRemoteControl.bind(this),
       toggleFullscreen: () => {
-        if (this.dom.remoteVideo.requestFullscreen) {
-            this.dom.remoteVideo.requestFullscreen();
-        }
+        this.toggleFullscreen();
       },
+      toggleKeyboard: this.toggleVirtualKeyboard.bind(this),
       toggleDebug: this.toggleDebug.bind(this),
       stopViewing: this.stopViewing.bind(this),
     };
@@ -206,6 +220,12 @@ class ScreenShareApp {
     } else {
         console.error(`[UI BINDING] 关键元素未找到: #remoteVideo`);
     }
+    
+    // 绑定虚拟键盘事件
+    this.bindVirtualKeyboardEvents();
+    
+    // 绑定全屏事件
+    this.bindFullscreenEvents();
   }
 
   async initAppAndConnect() {
@@ -1081,6 +1101,437 @@ class ScreenShareApp {
     };
 
     p2p.sendControlCommand(command);
+  }
+
+  // --- 虚拟键盘功能 ---
+  toggleVirtualKeyboard() {
+    this.isKeyboardVisible = !this.isKeyboardVisible;
+    
+    const iconSpan = this.dom.toggleKeyboard.querySelector('.btn-icon');
+    const textSpan = this.dom.toggleKeyboard.querySelector('.btn-text');
+    
+    if (this.isKeyboardVisible) {
+      iconSpan.textContent = '✅';
+      textSpan.textContent = '键盘已显示';
+      this.dom.toggleKeyboard.classList.add('control-enabled');
+      this.dom.virtualKeyboard.style.display = 'block';
+      this.updatePlatformSpecificShortcuts();
+    } else {
+      iconSpan.textContent = '⌨️';
+      textSpan.textContent = '键盘';
+      this.dom.toggleKeyboard.classList.remove('control-enabled');
+      this.dom.virtualKeyboard.style.display = 'none';
+    }
+    
+    this.updateAppStatus(this.isKeyboardVisible ? '虚拟键盘已显示' : '虚拟键盘已隐藏');
+  }
+  
+  updatePlatformSpecificShortcuts() {
+    // 根据不同平台更新快捷键显示
+    const platform = window.electronAPI.platform;
+    const isMac = platform === 'darwin';
+    
+    // 更新Ctrl/Cmd键
+    const modKey = isMac ? 'Cmd' : 'Ctrl';
+    const winKey = isMac ? 'Cmd' : 'Win';
+    
+    // 更新常用快捷键
+    if (this.dom.virtualKeyboard) {
+      const shortcuts = {
+        'copy-shortcut': `${modKey}+C`,
+        'paste-shortcut': `${modKey}+V`,
+        'cut-shortcut': `${modKey}+X`,
+        'undo-shortcut': `${modKey}+Z`,
+        'redo-shortcut': `${modKey}+Y`,
+        'selectall-shortcut': `${modKey}+A`,
+        'save-shortcut': `${modKey}+S`,
+        'alttab-shortcut': isMac ? 'Cmd+Tab' : 'Alt+Tab',
+        'taskmgr-shortcut': isMac ? 'Cmd+Option+Esc' : 'Ctrl+Shift+Esc',
+        'lock-shortcut': isMac ? 'Cmd+Control+Q' : 'Win+L',
+        'desktop-shortcut': isMac ? 'F11' : 'Win+D',
+        'run-shortcut': isMac ? 'Cmd+Space' : 'Win+R'
+      };
+      
+      Object.entries(shortcuts).forEach(([id, text]) => {
+        const element = document.getElementById(id);
+        if (element) {
+          element.textContent = text;
+        }
+      });
+    }
+  }
+
+  bindVirtualKeyboardEvents() {
+    // 关闭按钮
+    if (this.dom.keyboardClose) {
+      this.dom.keyboardClose.onclick = () => {
+        this.isKeyboardVisible = false;
+        this.dom.virtualKeyboard.style.display = 'none';
+        const iconSpan = this.dom.toggleKeyboard.querySelector('.btn-icon');
+        const textSpan = this.dom.toggleKeyboard.querySelector('.btn-text');
+        iconSpan.textContent = '⌨️';
+        textSpan.textContent = '键盘';
+        this.dom.toggleKeyboard.classList.remove('control-enabled');
+      };
+    }
+    
+    // 文本输入功能
+    if (this.dom.sendText) {
+      this.dom.sendText.onclick = () => this.sendTextInput(false);
+    }
+    
+    if (this.dom.sendEnter) {
+      this.dom.sendEnter.onclick = () => this.sendTextInput(true);
+    }
+    
+    if (this.dom.clearText) {
+      this.dom.clearText.onclick = () => {
+        this.dom.textInput.value = '';
+        this.dom.textInput.focus();
+      };
+    }
+    
+    // 绑定所有键盘按钮
+    if (this.dom.virtualKeyboard) {
+      // 快捷键按钮
+      this.dom.virtualKeyboard.querySelectorAll('.shortcut-key, .system-key').forEach(btn => {
+        btn.onclick = () => {
+          const shortcut = btn.dataset.shortcut;
+          if (shortcut) {
+            this.sendShortcut(shortcut);
+          }
+        };
+      });
+      
+      // 功能键按钮
+      this.dom.virtualKeyboard.querySelectorAll('.function-key').forEach(btn => {
+        btn.onclick = () => {
+          const key = btn.dataset.key;
+          if (key) {
+            this.sendFunctionKey(key);
+          }
+        };
+      });
+    }
+    
+    // 初始化键盘显示状态
+    this.isKeyboardVisible = false;
+  }
+
+  sendTextInput(withEnter = false) {
+    const text = this.dom.textInput.value;
+    if (!text.trim()) return;
+    
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) {
+      this.updateAppStatus('未连接到远程主机');
+      return;
+    }
+    
+    // 发送文本
+    for (const char of text) {
+      const command = {
+        type: 'keytype',
+        text: char,
+        clientPlatform: window.electronAPI.platform
+      };
+      p2p.sendControlCommand(command);
+    }
+    
+    // 如果需要发送回车
+    if (withEnter) {
+      const enterCommand = {
+        type: 'keydown',
+        key: 'Enter',
+        code: 'Enter',
+        clientPlatform: window.electronAPI.platform
+      };
+      p2p.sendControlCommand(enterCommand);
+    }
+    
+    this.updateAppStatus(`已发送文本: ${text.substring(0, 20)}${text.length > 20 ? '...' : ''}`);
+  }
+
+  sendShortcut(shortcut) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) {
+      this.updateAppStatus('未连接到远程主机');
+      return;
+    }
+    
+    // 解析快捷键
+    const parts = shortcut.toLowerCase().split('+');
+    const modifiers = {
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: false
+    };
+    
+    let mainKey = '';
+    
+    parts.forEach(part => {
+      switch (part) {
+        case 'ctrl':
+          modifiers.ctrl = true;
+          break;
+        case 'alt':
+          modifiers.alt = true;
+          break;
+        case 'shift':
+          modifiers.shift = true;
+          break;
+        case 'cmd':
+        case 'win':
+          modifiers.meta = true;
+          break;
+        default:
+          mainKey = part;
+      }
+    });
+    
+    // 发送快捷键
+    const command = {
+      type: 'shortcut',
+      key: mainKey,
+      ctrlKey: modifiers.ctrl,
+      altKey: modifiers.alt,
+      shiftKey: modifiers.shift,
+      metaKey: modifiers.meta,
+      clientPlatform: window.electronAPI.platform
+    };
+    
+    p2p.sendControlCommand(command);
+    this.updateAppStatus(`已发送快捷键: ${shortcut.toUpperCase()}`);
+  }
+
+  sendFunctionKey(key) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) {
+      this.updateAppStatus('未连接到远程主机');
+      return;
+    }
+    
+    const command = {
+      type: 'functionkey',
+      key: key,
+      clientPlatform: window.electronAPI.platform
+    };
+    
+    p2p.sendControlCommand(command);
+    this.updateAppStatus(`已发送功能键: ${key}`);
+  }
+
+  // --- 全屏控制功能 ---
+  toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      // 进入全屏
+      if (this.dom.videoContainer.requestFullscreen) {
+        this.dom.videoContainer.requestFullscreen();
+      } else if (this.dom.videoContainer.webkitRequestFullscreen) {
+        this.dom.videoContainer.webkitRequestFullscreen();
+      } else if (this.dom.videoContainer.mozRequestFullScreen) {
+        this.dom.videoContainer.mozRequestFullScreen();
+      } else if (this.dom.videoContainer.msRequestFullscreen) {
+        this.dom.videoContainer.msRequestFullscreen();
+      }
+    } else {
+      // 退出全屏
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+    }
+  }
+
+  bindFullscreenEvents() {
+    // 全屏状态变化监听
+    const fullscreenChangeHandler = () => {
+      const isFullscreen = !!document.fullscreenElement;
+      
+      if (isFullscreen) {
+        // 进入全屏模式
+        this.setupFullscreenMouseTracking();
+        this.updateFullscreenControlsState();
+      } else {
+        // 退出全屏模式
+        this.cleanupFullscreenMouseTracking();
+      }
+    };
+
+    // 兼容不同浏览器的全屏事件
+    document.addEventListener('fullscreenchange', fullscreenChangeHandler);
+    document.addEventListener('webkitfullscreenchange', fullscreenChangeHandler);
+    document.addEventListener('mozfullscreenchange', fullscreenChangeHandler);
+    document.addEventListener('MSFullscreenChange', fullscreenChangeHandler);
+
+    // 绑定全屏控制按钮事件
+    if (this.dom.fullscreenToggleControl) {
+      this.dom.fullscreenToggleControl.onclick = () => {
+        this.toggleRemoteControl();
+        this.updateFullscreenControlsState();
+      };
+    }
+
+    if (this.dom.fullscreenToggleKeyboard) {
+      this.dom.fullscreenToggleKeyboard.onclick = () => {
+        this.toggleVirtualKeyboard();
+        this.updateFullscreenControlsState();
+      };
+    }
+
+    if (this.dom.fullscreenExitFullscreen) {
+      this.dom.fullscreenExitFullscreen.onclick = () => {
+        this.toggleFullscreen();
+      };
+    }
+
+    if (this.dom.fullscreenStopViewing) {
+      this.dom.fullscreenStopViewing.onclick = () => {
+        this.stopViewing();
+      };
+    }
+  }
+
+  setupFullscreenMouseTracking() {
+    // 鼠标移动超时定时器
+    this.fullscreenMouseTimer = null;
+    this.fullscreenMouseTimeout = 3000; // 3秒后隐藏控制面板
+
+    const showControls = () => {
+      if (this.dom.fullscreenControls) {
+        this.dom.fullscreenControls.classList.add('show');
+      }
+    };
+
+    const hideControls = () => {
+      if (this.dom.fullscreenControls) {
+        this.dom.fullscreenControls.classList.remove('show');
+      }
+    };
+
+    const resetMouseTimer = () => {
+      showControls();
+      
+      if (this.fullscreenMouseTimer) {
+        clearTimeout(this.fullscreenMouseTimer);
+      }
+      
+      this.fullscreenMouseTimer = setTimeout(() => {
+        hideControls();
+      }, this.fullscreenMouseTimeout);
+    };
+
+    // 鼠标移动事件处理
+    this.fullscreenMouseMoveHandler = (e) => {
+      // 检查鼠标是否在边缘区域（右上角100px范围内）
+      const edgeSize = 100;
+      const isInControlArea = e.clientX > window.innerWidth - edgeSize && e.clientY < edgeSize;
+      
+      if (isInControlArea) {
+        showControls();
+        if (this.fullscreenMouseTimer) {
+          clearTimeout(this.fullscreenMouseTimer);
+          this.fullscreenMouseTimer = null;
+        }
+      } else {
+        resetMouseTimer();
+      }
+    };
+
+    // 鼠标离开事件处理
+    this.fullscreenMouseLeaveHandler = () => {
+      hideControls();
+      if (this.fullscreenMouseTimer) {
+        clearTimeout(this.fullscreenMouseTimer);
+        this.fullscreenMouseTimer = null;
+      }
+    };
+
+    // 控制面板悬停事件
+    this.fullscreenControlsMouseEnter = () => {
+      if (this.fullscreenMouseTimer) {
+        clearTimeout(this.fullscreenMouseTimer);
+        this.fullscreenMouseTimer = null;
+      }
+    };
+
+    this.fullscreenControlsMouseLeave = () => {
+      resetMouseTimer();
+    };
+
+    // 绑定事件
+    if (this.dom.videoContainer) {
+      this.dom.videoContainer.addEventListener('mousemove', this.fullscreenMouseMoveHandler);
+      this.dom.videoContainer.addEventListener('mouseleave', this.fullscreenMouseLeaveHandler);
+    }
+
+    if (this.dom.fullscreenControls) {
+      this.dom.fullscreenControls.addEventListener('mouseenter', this.fullscreenControlsMouseEnter);
+      this.dom.fullscreenControls.addEventListener('mouseleave', this.fullscreenControlsMouseLeave);
+    }
+
+    // 初始显示控制面板，然后设置定时器隐藏
+    resetMouseTimer();
+  }
+
+  cleanupFullscreenMouseTracking() {
+    // 清理定时器
+    if (this.fullscreenMouseTimer) {
+      clearTimeout(this.fullscreenMouseTimer);
+      this.fullscreenMouseTimer = null;
+    }
+
+    // 移除事件监听器
+    if (this.dom.videoContainer && this.fullscreenMouseMoveHandler) {
+      this.dom.videoContainer.removeEventListener('mousemove', this.fullscreenMouseMoveHandler);
+      this.dom.videoContainer.removeEventListener('mouseleave', this.fullscreenMouseLeaveHandler);
+    }
+
+    if (this.dom.fullscreenControls) {
+      this.dom.fullscreenControls.removeEventListener('mouseenter', this.fullscreenControlsMouseEnter);
+      this.dom.fullscreenControls.removeEventListener('mouseleave', this.fullscreenControlsMouseLeave);
+    }
+
+    // 隐藏控制面板
+    if (this.dom.fullscreenControls) {
+      this.dom.fullscreenControls.classList.remove('show');
+    }
+  }
+
+  updateFullscreenControlsState() {
+    if (!this.dom.fullscreenControls || !document.fullscreenElement) return;
+
+    // 更新控制按钮状态
+    if (this.dom.fullscreenToggleControl) {
+      const icon = this.dom.fullscreenToggleControl.querySelector('.btn-icon');
+      if (icon) {
+        icon.textContent = this.isControlEnabled ? '✅' : '🎮';
+      }
+      if (this.isControlEnabled) {
+        this.dom.fullscreenToggleControl.classList.add('control-enabled');
+      } else {
+        this.dom.fullscreenToggleControl.classList.remove('control-enabled');
+      }
+    }
+
+    // 更新键盘按钮状态
+    if (this.dom.fullscreenToggleKeyboard) {
+      const icon = this.dom.fullscreenToggleKeyboard.querySelector('.btn-icon');
+      if (icon) {
+        icon.textContent = this.isKeyboardVisible ? '✅' : '⌨️';
+      }
+      if (this.isKeyboardVisible) {
+        this.dom.fullscreenToggleKeyboard.classList.add('control-enabled');
+      } else {
+        this.dom.fullscreenToggleKeyboard.classList.remove('control-enabled');
+      }
+    }
   }
 
   updateAppStatus(text) {
