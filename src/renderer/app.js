@@ -554,6 +554,11 @@ class ScreenShareApp {
     const p2p = new P2PConnection(this.userId, hostId, { isGuest: true });
     this.p2pConnections.set(hostId, p2p);
 
+    // 添加数据通道事件调试
+    p2p.addEventListener('controlopen', () => {
+      console.log('[VIEWER] 数据通道已打开，等待主机发送屏幕信息...');
+    });
+
     p2p.addEventListener('icecandidate', ({ detail: candidate }) => {
       this.signal.send({ type: 'ice-candidate', to: hostId, from: this.userId, data: candidate });
     });
@@ -596,11 +601,27 @@ class ScreenShareApp {
 
     // 尝试从主机信息中获取屏幕信息
     const host = this.allUsers.get(hostId);
+    console.log('[VIEWER] 连接前检查主机信息:', {
+      hostId,
+      hasHost: !!host,
+      hasScreenInfo: !!(host?.screenInfo),
+      hostInfo: host
+    });
+    
     if (host && host.screenInfo) {
       p2p.remoteScreenInfo = host.screenInfo;
-      console.log(`[VIEWER] 连接到主机 ${hostId}，获取屏幕信息:`, host.screenInfo);
+      console.log(`[VIEWER] 连接到主机 ${hostId}，从用户列表获取屏幕信息:`, host.screenInfo);
+      
+      // 如果从用户列表已经获取到屏幕信息，立即启用控制按钮
+      setTimeout(() => {
+        if (this.dom.toggleControl) {
+          this.dom.toggleControl.disabled = false;
+          this.dom.toggleControl.title = '点击启用远程控制';
+        }
+        this.updateAppStatus('屏幕信息已就绪，可以启用远程控制');
+      }, 1000); // 延迟1秒确保UI已更新
     } else {
-      console.log(`[VIEWER] 连接到主机 ${hostId}，但没有屏幕信息:`, { host, hasHost: !!host, hasScreenInfo: !!(host?.screenInfo) });
+      console.log(`[VIEWER] 连接到主机 ${hostId}，但没有屏幕信息，等待数据通道传递`);
     }
 
     const offer = await p2p.createOffer(new MediaStream());
@@ -655,13 +676,20 @@ class ScreenShareApp {
     // 修复：添加数据通道打开事件监听，主动发送屏幕信息
     p2p.addEventListener('controlopen', () => {
       // 数据通道打开后，主动发送屏幕信息给观看端
-      if (this.selectedScreenInfo) {
-        console.log('[HOST] 数据通道已打开，发送屏幕信息给观看端:', this.selectedScreenInfo);
-        p2p.sendControlCommand({
-          type: 'screen-info',
-          screenInfo: this.selectedScreenInfo
-        });
-      }
+      console.log('[HOST] 数据通道已打开，准备发送屏幕信息...');
+      
+      // 稍微延迟发送，确保连接稳定
+      setTimeout(() => {
+        if (this.selectedScreenInfo) {
+          console.log('[HOST] 发送屏幕信息给观看端:', this.selectedScreenInfo);
+          p2p.sendControlCommand({
+            type: 'screen-info',
+            screenInfo: this.selectedScreenInfo
+          });
+        } else {
+          console.warn('[HOST] 警告：selectedScreenInfo 为空，无法发送屏幕信息');
+        }
+      }, 500); // 延迟500ms确保连接稳定
     });
     
     // 为P2P连接设置屏幕信息
@@ -762,6 +790,9 @@ class ScreenShareApp {
             this.dom.remoteInfo.textContent = info;
           }
         }
+        
+        // 输出完整的调试状态
+        this.printDebugStatus();
       } catch (error) {
         console.error('获取显示信息失败:', error);
       }
@@ -769,6 +800,51 @@ class ScreenShareApp {
     
     console.log(`调试模式${this.debugMode ? '已启用' : '已禁用'}`);
     return this.debugMode;
+  }
+
+  // 新增：输出完整的调试状态
+  printDebugStatus() {
+    console.log('=== 调试状态报告 ===');
+    console.log('1. 基本信息:', {
+      userId: this.userId,
+      isHost: !!this.localStream,
+      debugMode: this.debugMode,
+      isControlEnabled: this.isControlEnabled
+    });
+    
+    console.log('2. P2P连接:', {
+      connectionCount: this.p2pConnections.size,
+      connections: Array.from(this.p2pConnections.entries()).map(([id, p2p]) => ({
+        remoteId: id,
+        isConnected: p2p.isConnected,
+        isControlEnabled: p2p.isControlEnabled,
+        hasRemoteScreenInfo: !!p2p.remoteScreenInfo,
+        remoteScreenInfo: p2p.remoteScreenInfo
+      }))
+    });
+    
+    console.log('3. 用户列表:', {
+      allUsersCount: this.allUsers?.size || 0,
+      users: this.allUsers ? Array.from(this.allUsers.entries()).map(([id, user]) => ({
+        id,
+        isHosting: user.isHosting,
+        hasScreenInfo: !!user.screenInfo,
+        screenInfo: user.screenInfo
+      })) : []
+    });
+    
+    console.log('4. 屏幕信息:', {
+      selectedScreenInfo: this.selectedScreenInfo,
+      remoteScreenInfo: this.getRemoteScreenInfo()
+    });
+    
+    console.log('5. UI状态:', {
+      currentPanel: this.dom.screenView?.style.display !== 'none' ? 'screenView' : 'other',
+      controlButtonDisabled: this.dom.toggleControl?.disabled,
+      controlButtonTitle: this.dom.toggleControl?.title
+    });
+    
+    console.log('=== 调试状态报告结束 ===');
   }
 
   // 改进的坐标计算函数
@@ -1648,9 +1724,18 @@ class ScreenShareApp {
 
   // 获取远程屏幕信息的辅助方法
   getRemoteScreenInfo() {
+    console.log('[SCREEN-INFO] 开始获取远程屏幕信息...');
+    
     // 从当前连接的P2P连接中获取远程屏幕信息
     // 这个信息在连接建立时应该被传递
     const p2p = this.p2pConnections.values().next().value;
+    console.log('[SCREEN-INFO] P2P连接状态:', {
+      hasP2P: !!p2p,
+      p2pId: p2p?.remoteId,
+      hasRemoteScreenInfo: !!(p2p?.remoteScreenInfo),
+      remoteScreenInfo: p2p?.remoteScreenInfo
+    });
+    
     if (p2p && p2p.remoteScreenInfo) {
       console.log('[SCREEN-INFO] 从P2P连接获取屏幕信息:', p2p.remoteScreenInfo);
       return p2p.remoteScreenInfo;
@@ -1666,20 +1751,19 @@ class ScreenShareApp {
     // 调试：尝试从allUsers中获取当前连接的主机屏幕信息
     if (p2p && this.allUsers) {
       const host = this.allUsers.get(p2p.remoteId);
+      console.log('[SCREEN-INFO] 检查用户列表:', {
+        remoteId: p2p.remoteId,
+        hasHost: !!host,
+        hostInfo: host,
+        allUsersSize: this.allUsers.size
+      });
+      
       if (host && host.screenInfo) {
         console.log('[SCREEN-INFO] 从用户列表获取屏幕信息:', host.screenInfo);
         p2p.remoteScreenInfo = host.screenInfo; // 缓存到P2P连接中
         return host.screenInfo;
       } else {
-        console.log('[SCREEN-INFO] 调试信息:', {
-          hasP2P: !!p2p,
-          remoteId: p2p?.remoteId,
-          hasAllUsers: !!this.allUsers,
-          hasHost: !!(host),
-          hasHostScreenInfo: !!(host?.screenInfo),
-          allUsersSize: this.allUsers?.size,
-          p2pConnectionsSize: this.p2pConnections.size
-        });
+        console.log('[SCREEN-INFO] 用户列表中没有屏幕信息');
       }
     }
     
