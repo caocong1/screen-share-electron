@@ -173,14 +173,47 @@ function transformCoordinates(data) {
     } else {
       // Windows/Linux接收端
       if (clientPlatform === 'darwin') {
-        // macOS -> Windows: 可能需要放大
-        const scaleX = bounds.width / videoWidth;
-        const scaleY = bounds.height / videoHeight;
+        // macOS -> Windows: 特殊处理缩放
+        console.log('[坐标转换] macOS -> Windows 缩放处理');
         
-        actualX = bounds.x + (data.x * scaleX);
-        actualY = bounds.y + (data.y * scaleY);
+        // 测试：检查robotjs使用的坐标系统
+        if (data.type === 'mousedown') {
+          console.log('[坐标转换] robotjs坐标系统测试:', {
+            logicalResolution: { width: bounds.width, height: bounds.height },
+            physicalResolution: { width: bounds.width * scaleFactor, height: bounds.height * scaleFactor },
+            scaleFactor: scaleFactor,
+            videoResolution: { width: videoWidth, height: videoHeight }
+          });
+        }
         
-        debugInfo.scaleFactors = { scaleX, scaleY };
+        // 修复：如果视频分辨率与物理分辨率匹配，直接映射到逻辑坐标
+        const physicalWidth = bounds.width * scaleFactor;
+        const physicalHeight = bounds.height * scaleFactor;
+        
+        if (Math.abs(videoWidth - physicalWidth) < 10 && Math.abs(videoHeight - physicalHeight) < 10) {
+          // 视频分辨率匹配物理分辨率，直接映射到逻辑坐标
+          actualX = bounds.x + (data.x / scaleFactor);
+          actualY = bounds.y + (data.y / scaleFactor);
+          
+          debugInfo.mappingType = 'physical-to-logical';
+          debugInfo.directScale = { x: 1/scaleFactor, y: 1/scaleFactor };
+        } else if (Math.abs(videoWidth - bounds.width) < 10 && Math.abs(videoHeight - bounds.height) < 10) {
+          // 视频分辨率匹配逻辑分辨率，直接映射
+          actualX = bounds.x + data.x;
+          actualY = bounds.y + data.y;
+          
+          debugInfo.mappingType = 'logical-to-logical';
+        } else {
+          // 其他情况，按比例映射到逻辑坐标
+          const scaleX = bounds.width / videoWidth;
+          const scaleY = bounds.height / videoHeight;
+          
+          actualX = bounds.x + (data.x * scaleX);
+          actualY = bounds.y + (data.y * scaleY);
+          
+          debugInfo.mappingType = 'proportional';
+          debugInfo.scaleFactors = { scaleX, scaleY };
+        }
       } else {
         // Windows -> Windows: 直接映射
         actualX = bounds.x + data.x;
