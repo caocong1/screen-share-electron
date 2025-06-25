@@ -56,33 +56,68 @@ ipcMain.handle('get-desktop-sources', async () => {
     // 获取所有屏幕的详细信息
     const { screen } = require('electron');
     const allDisplays = screen.getAllDisplays();
+    const primaryDisplay = screen.getPrimaryDisplay();
     
-    return sources.map(source => {
+    console.log('[DESKTOP-SOURCES] 获取到的源数量:', sources.length);
+    console.log('[DESKTOP-SOURCES] 可用显示器:', allDisplays.map(d => ({
+      id: d.id,
+      bounds: d.bounds,
+      scaleFactor: d.scaleFactor,
+      isPrimary: d.id === primaryDisplay.id
+    })));
+    
+    return sources.map((source, index) => {
       let screenInfo = null;
       
-      // 如果是屏幕源，查找对应的显示器信息
+      console.log(`[DESKTOP-SOURCES] 处理源 ${index}:`, {
+        id: source.id,
+        name: source.name,
+        appIcon: !!source.appIcon
+      });
+      
+      // 优先尝试为屏幕源匹配对应的显示器
       if (source.id.startsWith('screen:')) {
-        // 提取屏幕ID (格式通常是 "screen:0:0" 或类似)
-        const screenMatch = source.id.match(/screen:(\d+)/);
-        if (screenMatch) {
-          const screenIndex = parseInt(screenMatch[1]);
-          const display = allDisplays[screenIndex];
-          if (display) {
-            screenInfo = {
-              bounds: display.bounds,          // { x, y, width, height }
-              workArea: display.workArea,      // 工作区域
-              scaleFactor: display.scaleFactor, // 缩放因子
-              isPrimary: display.id === screen.getPrimaryDisplay().id
-            };
+        // 提取屏幕ID，支持多种格式
+        const screenMatches = [
+          source.id.match(/screen:(\d+)/),           // "screen:0" 格式
+          source.id.match(/screen:(\d+):(\d+)/),     // "screen:0:0" 格式
+          source.id.match(/(\d+)$/)                  // 以数字结尾的格式
+        ];
+        
+        for (const match of screenMatches) {
+          if (match) {
+            const screenIndex = parseInt(match[1]);
+            const display = allDisplays[screenIndex];
+            if (display) {
+              screenInfo = {
+                bounds: display.bounds,
+                workArea: display.workArea,
+                scaleFactor: display.scaleFactor,
+                isPrimary: display.id === primaryDisplay.id
+              };
+              console.log(`[DESKTOP-SOURCES] 屏幕源 ${source.id} 匹配到显示器 ${screenIndex}:`, screenInfo);
+              break;
+            }
           }
         }
+      }
+      
+      // 如果没有匹配到具体的屏幕，使用主显示器信息作为默认值
+      if (!screenInfo) {
+        screenInfo = {
+          bounds: primaryDisplay.bounds,
+          workArea: primaryDisplay.workArea,
+          scaleFactor: primaryDisplay.scaleFactor,
+          isPrimary: true
+        };
+        console.log(`[DESKTOP-SOURCES] 源 ${source.id} 使用主显示器信息:`, screenInfo);
       }
       
       return {
         id: source.id,
         name: source.name,
         thumbnail: source.thumbnail.toDataURL(),
-        screenInfo: screenInfo  // 新增屏幕信息
+        screenInfo: screenInfo
       };
     });
   } catch (error) {

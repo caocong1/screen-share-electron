@@ -340,7 +340,15 @@ class ScreenShareApp {
       this.dom.screenSources.innerHTML = '<p>正在获取屏幕源...</p>';
       const sources = await window.electronAPI.getDesktopSources();
       
-      console.log('获取到的屏幕源:', sources); // 增加日志，方便调试
+      console.log('[LOAD-SOURCES] 获取到的屏幕源:', sources.length, '个');
+      sources.forEach((source, index) => {
+        console.log(`[LOAD-SOURCES] 源 ${index}:`, {
+          id: source.id,
+          name: source.name,
+          hasScreenInfo: !!source.screenInfo,
+          screenInfo: source.screenInfo
+        });
+      });
 
       this.dom.screenSources.innerHTML = ''; // 清空"加载中"提示
 
@@ -349,9 +357,9 @@ class ScreenShareApp {
         return;
       }
 
-      sources.forEach(source => {
+      sources.forEach((source, index) => {
         if (!source || !source.id || !source.name || !source.thumbnail) {
-            console.warn('发现一个无效的屏幕源对象，已跳过:', source);
+            console.warn(`[LOAD-SOURCES] 发现无效的屏幕源 ${index}:`, source);
             return; // 跳过这个无效的源
         }
 
@@ -365,8 +373,16 @@ class ScreenShareApp {
           this.selectedSourceEl = el;
           this.selectedSourceId = source.id;
           this.selectedScreenInfo = source.screenInfo; // 保存屏幕信息
+          
+          console.log('[SOURCE-SELECT] 选择了源:', {
+            id: source.id,
+            name: source.name,
+            screenInfo: source.screenInfo
+          });
+          
           this.dom.startScreenShare.disabled = false;
         };
+        
         // 构建显示名称，包含屏幕信息
         let displayName = source.name;
         if (source.screenInfo) {
