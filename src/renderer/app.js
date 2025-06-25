@@ -451,17 +451,11 @@ class ScreenShareApp {
       const host = this.allUsers.get(hostId);
       this.dom.viewTitle.textContent = `正在观看 ${host?.name || hostId} 的屏幕`;
 
-      // 当视频真正开始播放时，隐藏遮罩层
       this.dom.remoteVideo.onplaying = () => {
         this.dom.videoOverlay.style.display = 'none';
       };
     });
     p2p.addEventListener('close', () => this.showPanel('guestPanel'));
-    
-    // Simplified control handler
-    p2p.addEventListener('control', ({ detail: command }) => {
-      window.electronAPI.sendRemoteControl(command);
-    });
 
     const offer = await p2p.createOffer(new MediaStream());
     this.signal.send({ type: 'offer', to: hostId, from: this.userId, data: offer });
@@ -499,7 +493,13 @@ class ScreenShareApp {
       this.updateParticipantsList();
     });
     
-    // No need for a control listener here, as host only sends video
+    // 关键修复：为共享端的连接添加控制指令处理器
+    p2p.addEventListener('control', ({ detail: command }) => {
+      // 安全检查：确保只有在分享状态下才执行控制
+      if (this.localStream) {
+        window.electronAPI.sendRemoteControl(command);
+      }
+    });
 
     const answer = await p2p.createAnswer(offer, this.localStream);
     this.signal.send({ type: 'answer', to: fromId, from: this.userId, data: answer });
