@@ -96,28 +96,71 @@ function transformCoordinates(data) {
   let actualX = data.x;
   let actualY = data.y;
   
-  if (data.screenInfo && data.screenInfo.bounds) {
+  // 如果有视频分辨率信息，进行精确的坐标映射
+  if (data.videoResolution && data.screenInfo && data.screenInfo.bounds) {
     const bounds = data.screenInfo.bounds;
     const scaleFactor = data.screenInfo.scaleFactor || 1;
     const clientPlatform = data.clientPlatform || 'unknown';
+    const videoWidth = data.videoResolution.width;
+    const videoHeight = data.videoResolution.height;
     
-    // 智能坐标转换逻辑
+    // 调试信息
+    const debugInfo = {
+      serverPlatform: process.platform,
+      clientPlatform: clientPlatform,
+      originalCoords: { x: data.x, y: data.y },
+      videoResolution: { width: videoWidth, height: videoHeight },
+      screenBounds: bounds,
+      scaleFactor: scaleFactor
+    };
+    
+    // 核心坐标转换逻辑
     if (process.platform === 'darwin' && scaleFactor > 1) {
+      // macOS接收端，需要考虑Retina缩放
       if (clientPlatform === 'win32') {
-        actualX = bounds.x + (data.x / scaleFactor);
-        actualY = bounds.y + (data.y / scaleFactor);
+        // Windows -> macOS: 需要考虑视频分辨率和实际屏幕分辨率的映射
+        // 视频分辨率通常是逻辑分辨率，需要映射到物理分辨率
+        const scaleX = bounds.width / videoWidth;
+        const scaleY = bounds.height / videoHeight;
+        
+        actualX = bounds.x + (data.x * scaleX);
+        actualY = bounds.y + (data.y * scaleY);
+        
+        debugInfo.scaleFactors = { scaleX, scaleY };
       } else {
+        // macOS -> macOS: 直接映射
         actualX = bounds.x + data.x;
         actualY = bounds.y + data.y;
       }
     } else {
-      actualX = bounds.x + data.x;
-      actualY = bounds.y + data.y;
+      // Windows/Linux接收端
+      if (clientPlatform === 'darwin') {
+        // macOS -> Windows: 可能需要放大
+        const scaleX = bounds.width / videoWidth;
+        const scaleY = bounds.height / videoHeight;
+        
+        actualX = bounds.x + (data.x * scaleX);
+        actualY = bounds.y + (data.y * scaleY);
+        
+        debugInfo.scaleFactors = { scaleX, scaleY };
+      } else {
+        // Windows -> Windows: 直接映射
+        actualX = bounds.x + data.x;
+        actualY = bounds.y + data.y;
+      }
     }
     
+    debugInfo.finalCoords = { x: actualX, y: actualY };
+    
+    // 只在非鼠标移动事件时打印调试信息
     if (data.type !== 'mousemove' && data.type !== 'mousedrag') {
-      console.log(`[坐标转换] 接收端: ${process.platform}, 发送端: ${clientPlatform}, 原始: (${data.x}, ${data.y}), 缩放: ${scaleFactor}, 最终: (${actualX}, ${actualY})`);
+      console.log('[坐标转换]', debugInfo);
     }
+  } else if (data.screenInfo && data.screenInfo.bounds) {
+    // 兜底逻辑：如果没有视频分辨率信息，使用原有逻辑
+    const bounds = data.screenInfo.bounds;
+    actualX = bounds.x + data.x;
+    actualY = bounds.y + data.y;
   }
   
   return { x: Math.round(actualX), y: Math.round(actualY) };

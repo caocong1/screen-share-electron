@@ -228,7 +228,7 @@ function handleMessage(ws, message) {
 
 		// 新增：屏幕共享相关API
 		case "announce-host":
-			handleAnnounceHost(ws);
+			handleAnnounceHost(ws, message);
 			break;
 		
 		case "stop-hosting":
@@ -419,30 +419,47 @@ function getOnlineHostsList() {
 	const hosts = [];
 	for (const [userId, userInfo] of onlineUsers.entries()) {
 		if (userInfo.isHosting) {
-			hosts.push({
+			const hostInfo = {
 				id: userId,
-			});
+			};
+			
+			// 如果有屏幕信息，也包含进去
+			if (userInfo.screenInfo) {
+				hostInfo.screenInfo = userInfo.screenInfo;
+			}
+			
+			hosts.push(hostInfo);
 		}
 	}
 	return hosts;
 }
 
 // 处理主机宣告
-function handleAnnounceHost(ws) {
+function handleAnnounceHost(ws, message = {}) {
 	const userId = connections.get(ws);
 	if (!userId) return;
 
 	const userInfo = onlineUsers.get(userId);
 	if (userInfo) {
 		userInfo.isHosting = true;
-		console.log(`用户 ${userId} 开始分享屏幕`);
+		// 存储屏幕信息
+		if (message.screenInfo) {
+			userInfo.screenInfo = message.screenInfo;
+		}
+		console.log(`用户 ${userId} 开始分享屏幕`, message.screenInfo ? '(包含屏幕信息)' : '');
 
-		// 向所有其他用户广播新主机上线
+		// 向所有其他用户广播新主机上线，包含屏幕信息
+		const hostInfo = {
+			id: userId,
+		};
+		
+		if (message.screenInfo) {
+			hostInfo.screenInfo = message.screenInfo;
+		}
+
 		broadcastToAll({
 			type: "host-online",
-			host: {
-				id: userId,
-			}
+			host: hostInfo
 		}, userId);
 	}
 }

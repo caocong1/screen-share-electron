@@ -412,7 +412,10 @@ class ScreenShareApp {
       textSpan.textContent = '停止分享';
       this.dom.startScreenShare.onclick = this.stopSharing.bind(this);
       
-      this.signal.send({ type: 'announce-host' });
+      this.signal.send({ 
+        type: 'announce-host',
+        screenInfo: this.selectedScreenInfo
+      });
       this.updateAppStatus(`正在分享屏幕...`);
     } catch (error) {
       console.error('获取媒体流失败:', error);
@@ -565,6 +568,12 @@ class ScreenShareApp {
       // 观看端通常不需要处理控制指令，但这里可以处理一些状态反馈
     });
 
+    // 尝试从主机信息中获取屏幕信息
+    const host = this.allUsers.get(hostId);
+    if (host && host.screenInfo) {
+      p2p.remoteScreenInfo = host.screenInfo;
+    }
+
     const offer = await p2p.createOffer(new MediaStream());
     this.signal.send({ type: 'offer', to: hostId, from: this.userId, data: offer });
   }
@@ -613,6 +622,9 @@ class ScreenShareApp {
         window.electronAPI.sendRemoteControl(enrichedCommand);
       }
     });
+    
+    // 为P2P连接设置屏幕信息
+    p2p.remoteScreenInfo = this.selectedScreenInfo;
 
     const answer = await p2p.createAnswer(offer, this.localStream);
     this.signal.send({ type: 'answer', to: fromId, from: this.userId, data: answer });
@@ -828,7 +840,8 @@ class ScreenShareApp {
         videoResolution: {
           width: this.dom.remoteVideo.videoWidth,
           height: this.dom.remoteVideo.videoHeight
-        }
+        },
+        screenInfo: this.getRemoteScreenInfo()
       };
       
       // 如果正在拖拽，添加拖拽信息
@@ -886,7 +899,8 @@ class ScreenShareApp {
           videoResolution: {
             width: this.dom.remoteVideo.videoWidth,
             height: this.dom.remoteVideo.videoHeight
-          }
+          },
+          screenInfo: this.getRemoteScreenInfo()
         };
         p2p.sendControlCommand(longPressCommand);
       }
@@ -902,7 +916,8 @@ class ScreenShareApp {
       videoResolution: {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
-      }
+      },
+      screenInfo: this.getRemoteScreenInfo()
     };
 
     p2p.sendControlCommand(command);
@@ -943,7 +958,8 @@ class ScreenShareApp {
       videoResolution: {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
-      }
+      },
+      screenInfo: this.getRemoteScreenInfo()
     };
 
     // 如果是拖拽结束，添加拖拽信息
@@ -999,7 +1015,8 @@ class ScreenShareApp {
       videoResolution: {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
-      }
+      },
+      screenInfo: this.getRemoteScreenInfo()
     };
 
     p2p.sendControlCommand(command);
@@ -1026,7 +1043,8 @@ class ScreenShareApp {
       videoResolution: {
         width: this.dom.remoteVideo.videoWidth,
         height: this.dom.remoteVideo.videoHeight
-      }
+      },
+      screenInfo: this.getRemoteScreenInfo()
     };
 
     p2p.sendControlCommand(command);
@@ -1532,6 +1550,25 @@ class ScreenShareApp {
         this.dom.fullscreenToggleKeyboard.classList.remove('control-enabled');
       }
     }
+  }
+
+  // 获取远程屏幕信息的辅助方法
+  getRemoteScreenInfo() {
+    // 从当前连接的P2P连接中获取远程屏幕信息
+    // 这个信息在连接建立时应该被传递
+    const p2p = this.p2pConnections.values().next().value;
+    if (p2p && p2p.remoteScreenInfo) {
+      return p2p.remoteScreenInfo;
+    }
+    
+    // 如果没有存储的远程屏幕信息，尝试从已知的屏幕信息中获取
+    // 这通常发生在作为主机时，使用本地选中的屏幕信息
+    if (this.selectedScreenInfo) {
+      return this.selectedScreenInfo;
+    }
+    
+    // 兜底返回null，坐标转换函数会处理这种情况
+    return null;
   }
 
   updateAppStatus(text) {
