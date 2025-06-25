@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>局域网屏幕共享</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 头部导航 -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>🖥️ 局域网屏幕共享</h1>
+                <div class="header-info">
+                    <span id="connectionStatus" class="status-indicator offline">离线</span>
+                    <span id="networkInfo" class="network-info"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 模式选择 -->
+            <section class="mode-selection" id="modeSelection">
+                <div class="mode-card">
+                    <div class="mode-icon">📺</div>
+                    <h3>分享我的屏幕</h3>
+                    <p>让其他人观看并控制我的屏幕</p>
+                    <button class="mode-btn host-btn" id="hostBtn">开始分享</button>
+                </div>
+                
+                <div class="mode-card">
+                    <div class="mode-icon">👀</div>
+                    <h3>观看别人的屏幕</h3>
+                    <p>连接到其他人的屏幕进行观看和控制</p>
+                    <button class="mode-btn guest-btn" id="guestBtn">连接观看</button>
+                </div>
+            </section>
+
+            <!-- 主机面板 -->
+            <section class="host-panel" id="hostPanel" style="display: none;">
+                <div class="panel-header">
+                    <h2>📺 屏幕分享主机</h2>
+                    <button class="back-btn" id="backFromHost">返回</button>
+                </div>
+                
+                <div class="host-content">
+                    <div class="host-status">
+                        <span>状态: </span>
+                        <span id="hostStatus" class="status-text">准备中...</span>
+                    </div>
+
+                    <div class="screen-selection">
+                        <h3>选择要分享的屏幕:</h3>
+                        <div id="screenSources" class="screen-sources"></div>
+                        <button id="startScreenShare" class="action-btn" disabled>开始屏幕分享</button>
+                    </div>
+
+                    <div class="participants-list">
+                        <h3>在线用户 (<span id="participantCount">0</span>):</h3>
+                        <ul id="participantsList" class="participants"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 访客面板 -->
+            <section class="guest-panel" id="guestPanel" style="display: none;">
+                <div class="panel-header">
+                    <h2>👀 观看屏幕</h2>
+                    <button class="back-btn" id="backFromGuest">返回</button>
+                </div>
+                
+                <div class="guest-content">
+                    <div class="connection-status">
+                        <span>连接状态: </span>
+                        <span id="guestStatus" class="status-text">连接中...</span>
+                    </div>
+
+                    <div class="available-hosts">
+                        <h3>可连接的用户:</h3>
+                        <div id="hostsList" class="hosts-list">
+                            <p class="no-hosts">正在搜索可用的屏幕分享...</p>
+                        </div>
+                        <button id="refreshHosts" class="secondary-btn">刷新</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 屏幕共享视图 -->
+            <section class="screen-view" id="screenView" style="display: none;">
+                <div class="view-header">
+                    <div class="view-info">
+                        <h2 id="viewTitle">屏幕共享</h2>
+                        <div class="view-controls">
+                            <button id="toggleControl" class="control-btn">🎮 启用控制</button>
+                            <button id="toggleFullscreen" class="control-btn">⛶ 全屏</button>
+                            <button id="stopViewing" class="control-btn danger">⏹️ 停止</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="video-container">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <div class="video-overlay" id="videoOverlay">
+                        <div class="loading-spinner">连接中...</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 状态栏 -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span id="appStatus">就绪</span>
+            </div>
+            <div class="status-right">
+                <span id="versionInfo"></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 模态对话框 -->
+    <div class="modal" id="messageModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">提示</h3>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button id="modalOk" class="action-btn">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本文件 -->
+    <script type="module" src="renderer/app.js"></script>
+</body>
+</html>

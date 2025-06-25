@@ -1,0 +1,50 @@
+{
+  "name": "screen-share-electron",
+  "productName": "局域网屏幕共享",
+  "version": "1.0.0",
+  "description": "基于Electron和WebRTC的局域网屏幕共享和远程控制应用",
+  "type": "module",
+  "main": "src/index.cjs",
+  "scripts": {
+    "start": "electron-forge start",
+    "start:server": "node signal-server/ws-signal-server.js",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\"",
+    "build": "tsc",
+    "build:watch": "tsc --watch"
+  },
+  "keywords": [],
+  "author": {
+    "name": "董立",
+    "email": "caocong1@gmail.com"
+  },
+  "license": "MIT",
+  "packageManager": "pnpm@8.0.0",
+  "engines": {
+    "node": ">=16.0.0",
+    "pnpm": ">=7.0.0"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "ws": "^8.14.2",
+    "robotjs": "^0.6.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-deb": "^7.8.1",
+    "@electron-forge/maker-rpm": "^7.8.1",
+    "@electron-forge/maker-squirrel": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
+    "@electron-forge/plugin-fuses": "^7.8.1",
+    "@electron/fuses": "^1.8.0",
+    "@types/node": "^24.0.4",
+    "@types/uuid": "^10.0.0",
+    "electron": "37.0.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3"
+  }
+}
