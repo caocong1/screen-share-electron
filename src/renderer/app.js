@@ -100,6 +100,7 @@ class ScreenShareApp {
       participantCount: document.getElementById('participantCount'),
       onlineUsersList: document.getElementById('onlineUsersList'),
       remoteVideo: document.getElementById('remoteVideo'),
+      videoOverlay: document.getElementById('videoOverlay'),
       // Status
       connectionStatus: document.getElementById('connectionStatus'),
       networkInfo: document.getElementById('networkInfo'),
@@ -435,6 +436,9 @@ class ScreenShareApp {
     if (this.p2pConnections.has(hostId)) return;
     this.updateAppStatus(`正在连接到 ${hostId}...`);
 
+    // 确保在连接前显示遮罩层
+    this.dom.videoOverlay.style.display = 'flex';
+
     const p2p = new P2PConnection(this.userId, hostId, { isGuest: true });
     this.p2pConnections.set(hostId, p2p);
 
@@ -446,6 +450,11 @@ class ScreenShareApp {
       this.showPanel('screenView');
       const host = this.allUsers.get(hostId);
       this.dom.viewTitle.textContent = `正在观看 ${host?.name || hostId} 的屏幕`;
+
+      // 当视频真正开始播放时，隐藏遮罩层
+      this.dom.remoteVideo.onplaying = () => {
+        this.dom.videoOverlay.style.display = 'none';
+      };
     });
     p2p.addEventListener('close', () => this.showPanel('guestPanel'));
     
@@ -464,7 +473,11 @@ class ScreenShareApp {
     this.p2pConnections.forEach(conn => conn.close());
     this.p2pConnections.clear();
     this.dom.remoteVideo.srcObject = null;
+    this.dom.remoteVideo.onplaying = null; // 清理事件监听器
     this.showPanel('guestPanel');
+
+    // 重置遮罩层状态，为下次连接做准备
+    this.dom.videoOverlay.style.display = 'flex';
   }
 
   // --- WebRTC 信令处理 ---
