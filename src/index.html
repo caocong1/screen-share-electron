@@ -97,26 +97,33 @@
                     <div class="view-info">
                         <h2 id="viewTitle">屏幕共享</h2>
                         <div class="view-controls">
-                            <button id="toggleControl" class="control-btn" title="启用远程控制（包括鼠标和物理键盘输入映射）">
-                                <span class="btn-icon">🎮</span>
-                                <span class="btn-text">启用控制</span>
-                            </button>
-                            <button id="toggleFullscreen" class="control-btn fullscreen-btn">
-                                <span class="btn-icon">⛶</span>
-                                <span class="btn-text">全屏</span>
-                            </button>
-                            <button id="toggleKeyboard" class="control-btn" title="切换虚拟键盘">
-                                <span class="btn-icon">⌨️</span>
-                                <span class="btn-text">键盘</span>
-                            </button>
-                            <button id="toggleDebug" class="control-btn" title="切换调试模式">
-                                <span class="btn-icon">🐛</span>
-                                <span class="btn-text">调试</span>
-                            </button>
-                            <button id="stopViewing" class="control-btn danger">
-                                <span class="btn-icon">⏹️</span>
-                                <span class="btn-text">停止</span>
-                            </button>
+                                                         <button id="toggleControl" class="control-btn" title="启用远程控制（包括鼠标和物理键盘输入映射）&#10;按ESC键快速退出控制模式">
+                                 <span class="btn-icon">🎮</span>
+                                 <span class="btn-text">启用控制</span>
+                             </button>
+                             
+                             <!-- 新增：全局鼠标控制 -->
+                             <button id="globalMouseToggle" class="control-btn global-mouse-toggle" title="启用全局鼠标模式，提供高精度坐标控制，通过远程视频光标获得反馈">
+                                 <span class="btn-icon">🖱️</span>
+                                 <span class="btn-text">全局鼠标</span>
+                             </button>
+                             
+                             <button id="toggleFullscreen" class="control-btn fullscreen-btn">
+                                 <span class="btn-icon">⛶</span>
+                                 <span class="btn-text">全屏</span>
+                             </button>
+                             <button id="toggleKeyboard" class="control-btn" title="切换虚拟键盘">
+                                 <span class="btn-icon">⌨️</span>
+                                 <span class="btn-text">键盘</span>
+                             </button>
+                             <button id="toggleDebug" class="control-btn" title="切换调试模式">
+                                 <span class="btn-icon">🐛</span>
+                                 <span class="btn-text">调试</span>
+                             </button>
+                             <button id="stopViewing" class="control-btn danger">
+                                 <span class="btn-icon">⏹️</span>
+                                 <span class="btn-text">停止</span>
+                             </button>
                         </div>
                     </div>
                 </div>
@@ -126,9 +133,14 @@
                     <div class="video-overlay" id="videoOverlay">
                         <div class="loading-spinner">连接中...</div>
                     </div>
+                    <div class="pointer-lock-hint" id="pointerLockHint">
+                        点击视频区域启用指针锁定<br>
+                        <small>鼠标将被限制在视频区域内</small><br>
+                        <small>按ESC键退出控制模式</small>
+                    </div>
                     <!-- 全屏模式下的浮动控制面板 -->
                     <div class="fullscreen-controls" id="fullscreenControls">
-                        <button class="control-btn" id="fullscreenToggleControl" title="切换远程控制">
+                        <button class="control-btn" id="fullscreenToggleControl" title="切换远程控制&#10;按ESC键快速退出控制模式">
                             <span class="btn-icon">🎮</span>
                         </button>
                         <button class="control-btn" id="fullscreenToggleKeyboard" title="切换虚拟键盘">
@@ -148,10 +160,12 @@
                         <div>计算坐标: <span id="calcCoords">--</span></div>
                         <div>控制状态: <span id="controlStatus">禁用</span></div>
                         <div>全局键盘: <span id="globalKeyboardStatus">禁用</span></div>
+                        <div>指针锁定: <span id="pointerLockStatus">禁用</span></div>
                         <div>拖拽状态: <span id="dragStatus">无</span></div>
                         <div>滚轮状态: <span id="scrollStatus">无</span></div>
                         <div>输入设备: <span id="inputDevice">--</span></div>
                         <div>远程信息: <span id="remoteInfo">--</span></div>
+                        <div>快捷键: <span style="color: #007bff;">ESC键退出控制</span></div>
                     </div>
                 </div>
                 
@@ -291,6 +305,11 @@
                 <button id="modalOk" class="action-btn">确定</button>
             </div>
         </div>
+    </div>
+
+    <!-- 光标模式指示器 -->
+    <div id="cursorModeIndicator" class="cursor-mode-indicator">
+        <span id="cursorModeText">DOM事件模式</span>
     </div>
 
     <!-- 脚本文件 -->

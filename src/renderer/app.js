@@ -75,6 +75,16 @@ class ScreenShareApp {
     this.globalKeyDownHandler = null;
     this.globalKeyUpHandler = null;
 
+    // 全局鼠标监听状态
+    this.globalMouseMode = false;
+    this.virtualCursor = null;
+    this.lastGlobalMousePosition = { x: 0, y: 0 };
+    this.globalMouseButtonState = { left: false, right: false, middle: false };
+    
+    // 绑定全局鼠标事件处理函数
+    this.handleGlobalMouseMove = this.handleGlobalMouseMove.bind(this);
+    this.handleCursorVisibilityChanged = this.handleCursorVisibilityChanged.bind(this);
+
     this.initDomElements();
     this.bindUIEvents();
     this.initAppAndConnect();
@@ -119,6 +129,7 @@ class ScreenShareApp {
       calcCoords: document.getElementById('calcCoords'),
       controlStatus: document.getElementById('controlStatus'),
       globalKeyboardStatus: document.getElementById('globalKeyboardStatus'),
+      pointerLockStatus: document.getElementById('pointerLockStatus'),
       dragStatus: document.getElementById('dragStatus'),
       scrollStatus: document.getElementById('scrollStatus'),
       inputDevice: document.getElementById('inputDevice'),
@@ -138,6 +149,8 @@ class ScreenShareApp {
       fullscreenToggleKeyboard: document.getElementById('fullscreenToggleKeyboard'),
       fullscreenExitFullscreen: document.getElementById('fullscreenExitFullscreen'),
       fullscreenStopViewing: document.getElementById('fullscreenStopViewing'),
+      // Pointer lock elements
+      pointerLockHint: document.getElementById('pointerLockHint'),
     };
     
     // 初始化调试模式
@@ -243,6 +256,29 @@ class ScreenShareApp {
     
     // 绑定全屏事件
     this.bindFullscreenEvents();
+    
+         // 绑定视频容器点击事件（用于启用指针锁定）
+     if (this.dom.videoContainer) {
+       this.dom.videoContainer.addEventListener('click', () => {
+         if (this.isControlEnabled && !this.globalMouseMode && !document.pointerLockElement) {
+           this.enablePointerLock();
+         }
+       });
+       
+       // 鼠标进入时显示提示
+       this.dom.videoContainer.addEventListener('mouseenter', () => {
+         if (this.isControlEnabled && !this.globalMouseMode && !document.pointerLockElement && this.dom.pointerLockHint) {
+           this.dom.pointerLockHint.classList.add('show');
+         }
+       });
+       
+       // 鼠标离开时隐藏提示
+       this.dom.videoContainer.addEventListener('mouseleave', () => {
+         if (this.dom.pointerLockHint) {
+           this.dom.pointerLockHint.classList.remove('show');
+         }
+       });
+     }
   }
 
   async initAppAndConnect() {
@@ -817,46 +853,60 @@ class ScreenShareApp {
   }
   
   // --- 远程控制 ---
-  toggleRemoteControl() {
-    // 检查是否有可用的屏幕信息
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo && !this.isControlEnabled) {
-      // 如果没有屏幕信息且试图启用控制，给出提示
-      console.warn('[远程控制] 屏幕信息尚未就绪，无法启用控制');
-      this.updateAppStatus('屏幕信息尚未就绪，请稍后再试');
-      return;
+  async toggleRemoteControl() {
+    if (!this.isControlEnabled) {
+      // 启动远程控制时，询问是否使用全局鼠标模式
+      const useGlobalMouse = confirm('是否使用全局鼠标模式？\n\n全局鼠标模式可以避免坐标转换问题，提供更精确的控制。\n\n点击"确定"使用全局鼠标模式\n点击"取消"使用传统DOM事件模式');
+      
+      if (useGlobalMouse) {
+        await this.toggleGlobalMouseMode();
+      } else {
+        // 使用DOM模式时启用指针锁定
+        await this.enablePointerLock();
+      }
     }
     
+    // 原有的远程控制逻辑
     this.isControlEnabled = !this.isControlEnabled;
     
-    const iconSpan = this.dom.toggleControl.querySelector('.btn-icon');
-    const textSpan = this.dom.toggleControl.querySelector('.btn-text');
-    
     if (this.isControlEnabled) {
-      iconSpan.textContent = '✅';
-      textSpan.textContent = '控制已启用';
-      this.dom.toggleControl.classList.add('control-enabled');
-      // 给整个屏幕视图添加控制启用的样式
-      this.dom.screenView.classList.add('control-enabled');
-      // 启用全局键盘监听
+      this.dom.remoteVideo.style.cursor = 'crosshair';
       this.enableGlobalKeyboardControl();
-      console.log('[远程控制] 控制已启用，包括全局键盘监听，屏幕信息:', screenInfo);
+      this.updateAppStatus('远程控制已启用 - 可以控制远程桌面');
     } else {
-      iconSpan.textContent = '🎮';
-      textSpan.textContent = '启用控制';
-      this.dom.toggleControl.classList.remove('control-enabled');
-      this.dom.screenView.classList.remove('control-enabled');
-      // 禁用全局键盘监听
+      // 停止远程控制时，同时停止全局鼠标模式和指针锁定
+      if (this.globalMouseMode) {
+        await this.stopGlobalMouseMode();
+      } else {
+        await this.disablePointerLock();
+      }
+      
+      this.dom.remoteVideo.style.cursor = '';
       this.disableGlobalKeyboardControl();
-      console.log('[远程控制] 控制已禁用，已移除全局键盘监听');
+      this.updateAppStatus('远程控制已禁用');
     }
     
-    // 更新调试信息
-    if (this.dom.controlStatus) {
-      this.dom.controlStatus.textContent = this.isControlEnabled ? '启用' : '禁用';
+    // 更新按钮状态
+    const controlButton = document.getElementById('toggleControl');
+    if (controlButton) {
+      const textSpan = controlButton.querySelector('.btn-text');
+      const iconSpan = controlButton.querySelector('.btn-icon');
+      
+      if (textSpan) {
+        textSpan.textContent = this.isControlEnabled ? '禁用控制' : '启用控制';
+      }
+      if (iconSpan) {
+        iconSpan.textContent = this.isControlEnabled ? '⏹️' : '🎮';
+      }
+      
+      if (this.isControlEnabled) {
+        controlButton.classList.add('danger');
+      } else {
+        controlButton.classList.remove('danger');
+      }
     }
     
-    this.updateAppStatus(this.isControlEnabled ? '远程控制已启用（包括物理键盘）' : '远程控制已禁用');
+    console.log(`远程控制已${this.isControlEnabled ? '启用' : '禁用'}`);
   }
 
   // 启用全局键盘控制
@@ -935,6 +985,16 @@ class ScreenShareApp {
   handleGlobalKeyDown(e) {
     if (!this.isControlEnabled) return;
     
+    // 特殊处理 ESC 键 - 退出控制模式
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('[快捷键] ESC键退出控制模式');
+      this.updateAppStatus('ESC键退出控制模式');
+      this.toggleRemoteControl();
+      return;
+    }
+    
     // 某些特殊键需要阻止默认行为
     const specialKeys = ['Tab', 'F5', 'F11', 'F12', 'Alt', 'Control', 'Meta'];
     if (specialKeys.includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
@@ -993,898 +1053,6 @@ class ScreenShareApp {
       metaKey: e.metaKey,
       clientPlatform: window.electronAPI.platform,
       source: 'global' // 标记这是全局键盘事件
-    };
-
-    p2p.sendControlCommand(command);
-  }
-
-  // 添加调试功能
-  async toggleDebug() {
-    this.debugMode = !this.debugMode;
-    if (this.dom.debugInfo) {
-      this.dom.debugInfo.style.display = this.debugMode ? 'block' : 'none';
-    }
-    
-    // 更新视频尺寸信息
-    if (this.debugMode && this.dom.remoteVideo && this.dom.videoSize) {
-      const updateVideoSize = () => {
-        this.dom.videoSize.textContent = `${this.dom.remoteVideo.videoWidth}×${this.dom.remoteVideo.videoHeight}`;
-      };
-      
-      if (this.dom.remoteVideo.videoWidth) {
-        updateVideoSize();
-      } else {
-        this.dom.remoteVideo.addEventListener('loadedmetadata', updateVideoSize, { once: true });
-      }
-    }
-    
-    // 在调试模式下显示系统显示信息
-    if (this.debugMode) {
-      try {
-        const displayInfo = await window.electronAPI.getDisplayInfo();
-        console.log('系统显示信息:', displayInfo);
-        
-        // 更新调试面板信息
-        if (this.dom.clientPlatform) {
-          this.dom.clientPlatform.textContent = window.electronAPI.platform;
-        }
-        
-        // 显示当前选中屏幕的信息
-        if (this.selectedScreenInfo) {
-          console.log('当前选中屏幕信息:', this.selectedScreenInfo);
-          const isWindow = this.isWindowShare(this.selectedScreenInfo);
-          if (this.dom.remoteInfo) {
-            const typeText = isWindow ? '窗口共享' : '屏幕共享';
-            const positionText = isWindow ? ` 位置:(${this.selectedScreenInfo.bounds.x},${this.selectedScreenInfo.bounds.y})` : '';
-            const info = `${typeText} 缩放:${this.selectedScreenInfo.scaleFactor}x 分辨率:${this.selectedScreenInfo.bounds.width}×${this.selectedScreenInfo.bounds.height}${positionText}`;
-            this.dom.remoteInfo.textContent = info;
-          }
-        }
-        
-        // 输出完整的调试状态
-        this.printDebugStatus();
-      } catch (error) {
-        console.error('获取显示信息失败:', error);
-      }
-    }
-    
-    console.log(`调试模式${this.debugMode ? '已启用' : '已禁用'}`);
-    return this.debugMode;
-  }
-
-  // 新增：输出完整的调试状态
-  printDebugStatus() {
-    console.log('=== 调试状态报告 ===');
-    console.log('1. 基本信息:', {
-      userId: this.userId,
-      isHost: !!this.localStream,
-      debugMode: this.debugMode,
-      isControlEnabled: this.isControlEnabled
-    });
-    
-    console.log('2. P2P连接:', {
-      connectionCount: this.p2pConnections.size,
-      connections: Array.from(this.p2pConnections.entries()).map(([id, p2p]) => ({
-        remoteId: id,
-        isConnected: p2p.isConnected,
-        isControlEnabled: p2p.isControlEnabled,
-        hasRemoteScreenInfo: !!p2p.remoteScreenInfo,
-        remoteScreenInfo: p2p.remoteScreenInfo
-      }))
-    });
-    
-    console.log('3. 用户列表:', {
-      allUsersCount: this.allUsers?.size || 0,
-      users: this.allUsers ? Array.from(this.allUsers.entries()).map(([id, user]) => ({
-        id,
-        isHosting: user.isHosting,
-        hasScreenInfo: !!user.screenInfo,
-        screenInfo: user.screenInfo
-      })) : []
-    });
-    
-    console.log('4. 屏幕信息:', {
-      selectedScreenInfo: this.selectedScreenInfo,
-      remoteScreenInfo: this.getRemoteScreenInfo()
-    });
-    
-    console.log('5. UI状态:', {
-      currentPanel: this.dom.screenView?.style.display !== 'none' ? 'screenView' : 'other',
-      controlButtonDisabled: this.dom.toggleControl?.disabled,
-      controlButtonTitle: this.dom.toggleControl?.title
-    });
-    
-    console.log('=== 调试状态报告结束 ===');
-  }
-
-  // 改进的坐标计算函数 - 支持窗口共享的坐标转换
-  calculateVideoCoordinates(e) {
-    const video = this.dom.remoteVideo;
-    
-    // 确保视频已加载
-    if (!video.videoWidth || !video.videoHeight) {
-      console.warn('[坐标计算] 视频尺寸未就绪:', { videoWidth: video.videoWidth, videoHeight: video.videoHeight });
-      return { x: 0, y: 0, valid: false };
-    }
-
-    const rect = video.getBoundingClientRect();
-    const videoAspectRatio = video.videoWidth / video.videoHeight;
-    const containerAspectRatio = rect.width / rect.height;
-
-    if (this.debugMode) {
-      console.log('[坐标计算] 视频信息:', {
-        videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight,
-        videoAspectRatio,
-        containerWidth: rect.width,
-        containerHeight: rect.height,
-        containerAspectRatio,
-        mouseClientX: e.clientX,
-        mouseClientY: e.clientY,
-        rectLeft: rect.left,
-        rectTop: rect.top
-      });
-    }
-
-    // 计算视频在容器中的实际显示区域
-    let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-    
-    if (videoAspectRatio > containerAspectRatio) {
-      // 视频更宽，以宽度为准，高度居中
-      videoDisplayWidth = rect.width;
-      videoDisplayHeight = rect.width / videoAspectRatio;
-      offsetX = 0;
-      offsetY = (rect.height - videoDisplayHeight) / 2;
-    } else {
-      // 视频更高，以高度为准，宽度居中
-      videoDisplayWidth = rect.height * videoAspectRatio;
-      videoDisplayHeight = rect.height;
-      offsetX = (rect.width - videoDisplayWidth) / 2;
-      offsetY = 0;
-    }
-
-    // 计算鼠标在视频显示区域中的相对位置
-    const relativeX = e.clientX - rect.left - offsetX;
-    const relativeY = e.clientY - rect.top - offsetY;
-
-    // 转换为视频原始分辨率的坐标
-    const scaleX = video.videoWidth / videoDisplayWidth;
-    const scaleY = video.videoHeight / videoDisplayHeight;
-    
-    let x = relativeX * scaleX;
-    let y = relativeY * scaleY;
-
-    const valid = relativeX >= 0 && relativeX <= videoDisplayWidth && 
-                  relativeY >= 0 && relativeY <= videoDisplayHeight;
-
-    // 新增：处理窗口共享的坐标转换
-    const screenInfo = this.getRemoteScreenInfo();
-    if (screenInfo && screenInfo.bounds) {
-      // 检查是否为窗口共享（非全屏幕）
-      const isWindowShare = this.isWindowShare(screenInfo);
-      
-      if (isWindowShare) {
-        let offsetX = 0, offsetY = 0;
-        
-        // 优先使用实际窗口边界信息
-        if (screenInfo.actualWindowBounds) {
-          offsetX = screenInfo.actualWindowBounds.x;
-          offsetY = screenInfo.actualWindowBounds.y;
-          
-          if (this.debugMode) {
-            console.log('[坐标转换] 使用实际窗口边界进行坐标转换:', {
-              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
-              实际窗口位置: { x: screenInfo.actualWindowBounds.x, y: screenInfo.actualWindowBounds.y },
-              窗口尺寸: { width: screenInfo.actualWindowBounds.width, height: screenInfo.actualWindowBounds.height },
-              相对位置: screenInfo.relativePosition,
-              所在显示器: screenInfo.displayId
-            });
-          }
-        } else if (screenInfo.windowBounds) {
-          offsetX = screenInfo.windowBounds.x;
-          offsetY = screenInfo.windowBounds.y;
-          
-          if (this.debugMode) {
-            console.log('[坐标转换] 使用窗口边界进行坐标转换:', {
-              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
-              窗口位置: { x: screenInfo.windowBounds.x, y: screenInfo.windowBounds.y },
-              窗口尺寸: { width: screenInfo.windowBounds.width, height: screenInfo.windowBounds.height },
-              所在显示器: screenInfo.actualDisplay ? screenInfo.actualDisplay.bounds : '未知'
-            });
-          }
-        } else {
-          // 回退到使用屏幕边界信息
-          offsetX = screenInfo.bounds.x;
-          offsetY = screenInfo.bounds.y;
-          
-          if (this.debugMode) {
-            console.log('[坐标转换] 使用屏幕边界进行坐标转换:', {
-              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
-              屏幕偏移: { x: screenInfo.bounds.x, y: screenInfo.bounds.y },
-              屏幕信息: screenInfo.bounds
-            });
-          }
-        }
-        
-        // 应用坐标偏移
-        x += offsetX;
-        y += offsetY;
-        
-        if (this.debugMode) {
-          console.log('[坐标转换] 窗口共享坐标转换完成:', {
-            偏移前坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
-            应用偏移: { x: offsetX, y: offsetY },
-            最终坐标: { x, y },
-            窗口类型: screenInfo.windowBounds ? '实际窗口' : '屏幕边界'
-          });
-        }
-      } else {
-        if (this.debugMode) {
-          console.log('[坐标转换] 全屏幕共享，无需坐标转换');
-        }
-      }
-    } else {
-      if (this.debugMode) {
-        console.warn('[坐标转换] 缺少屏幕信息，无法进行坐标转换');
-      }
-    }
-
-    if (this.debugMode) {
-      console.log('[坐标计算] 结果:', {
-        videoDisplayWidth,
-        videoDisplayHeight,
-        offsetX,
-        offsetY,
-        relativeX,
-        relativeY,
-        scaleX,
-        scaleY,
-        原始X: relativeX * scaleX,
-        原始Y: relativeY * scaleY,
-        最终X: x,
-        最终Y: y,
-        valid,
-        screenInfo: screenInfo?.bounds
-      });
-    }
-
-    return { x: Math.round(x), y: Math.round(y), valid };
-  }
-  
-  handleRemoteMouseMove(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // 更新调试信息
-    if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
-      this.dom.mouseCoords.textContent = `(${e.clientX}, ${e.clientY})`;
-      const coords = this.calculateVideoCoordinates(e);
-      this.dom.calcCoords.textContent = `(${coords.x}, ${coords.y}) ${coords.valid ? '✓' : '✗'}`;
-      
-      // 更新拖拽状态
-      if (this.dom.dragStatus) {
-        if (this.dragState.isDragging) {
-          const duration = Date.now() - this.dragState.startTime;
-          this.dom.dragStatus.textContent = `拖拽中 ${this.dragState.button} ${duration}ms`;
-        } else {
-          this.dom.dragStatus.textContent = '无';
-        }
-      }
-    }
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[鼠标移动] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) return;
-
-    // 使用优化的鼠标移动发送方法
-    this.sendOptimizedMouseMove(coords, screenInfo);
-  }
-
-  /**
-   * 优化的鼠标移动发送方法 - 带节流和防抖
-   */
-  sendOptimizedMouseMove(coords, screenInfo) {
-    const now = Date.now();
-    const optimizer = this.mouseMoveOptimizer;
-    
-    // 构建命令对象
-    const command = {
-      type: this.dragState.isDragging ? 'mousedrag' : 'mousemove',
-      x: coords.x, 
-      y: coords.y,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-    
-    // 如果正在拖拽，添加拖拽信息
-    if (this.dragState.isDragging) {
-      command.button = this.dragState.button;
-      command.startX = this.dragState.startX;
-      command.startY = this.dragState.startY;
-    }
-    
-    // 检查是否可以立即发送（节流检查）
-    const timeSinceLastSend = now - optimizer.lastSendTime;
-    if (timeSinceLastSend >= optimizer.throttleDelay) {
-      // 可以立即发送
-      this.doSendMouseMoveCommand(command);
-      optimizer.lastSendTime = now;
-      
-      // 清除待发送的指令
-      if (optimizer.timer) {
-        clearTimeout(optimizer.timer);
-        optimizer.timer = null;
-      }
-      optimizer.pendingCommand = null;
-    } else {
-      // 需要等待，更新待发送指令（只保留最新的）
-      optimizer.pendingCommand = command;
-      
-      // 如果没有定时器，创建一个
-      if (!optimizer.timer) {
-        const remainingDelay = optimizer.throttleDelay - timeSinceLastSend;
-        const actualDelay = Math.min(remainingDelay, optimizer.maxPendingTime);
-        
-        optimizer.timer = setTimeout(() => {
-          if (optimizer.pendingCommand) {
-            this.doSendMouseMoveCommand(optimizer.pendingCommand);
-            optimizer.lastSendTime = Date.now();
-            optimizer.pendingCommand = null;
-          }
-          optimizer.timer = null;
-        }, actualDelay);
-      }
-    }
-  }
-
-  /**
-   * 实际发送鼠标移动指令
-   */
-  doSendMouseMoveCommand(command) {
-    const p2p = this.p2pConnections.values().next().value;
-    if (p2p) {
-      p2p.sendControlCommand(command);
-      
-      // 调试信息（减少日志频率）
-      if (this.debugMode && Math.random() < 0.01) {
-        console.log('[鼠标移动优化] 发送坐标:', {
-          coords: { x: command.x, y: command.y },
-          type: command.type,
-          timestamp: Date.now()
-        });
-      }
-    }
-  }
-
-  /**
-   * 优化的滚轮发送方法 - 支持触摸板手势和滚轮优化
-   */
-  sendOptimizedScroll(e, coords, screenInfo) {
-    if (!this.scrollOptimizer) {
-      this.scrollOptimizer = {
-        lastSendTime: 0,
-        throttleDelay: 16, // 16ms节流间隔 (约60fps)
-        pendingCommand: null,
-        timer: null,
-        maxPendingTime: 32, // 最大延迟32ms
-        accumulated: { x: 0, y: 0 }, // 累积滚动量
-        resetTimer: null,
-        resetDelay: 100 // 100ms后重置累积量
-      };
-    }
-
-    const optimizer = this.scrollOptimizer;
-    const now = Date.now();
-
-    // 检测滚轮模式和触摸板手势
-    const deltaMode = e.deltaMode || 0; // 0: pixel, 1: line, 2: page
-    const isTrackpad = this.detectTrackpadGesture(e);
-    
-    // 滚动量处理 - 根据不同输入设备调整
-    let deltaX = e.deltaX;
-    let deltaY = e.deltaY;
-    
-    // 触摸板通常有更精细的控制，需要不同的处理
-    if (isTrackpad) {
-      // 触摸板的滚动量通常较小，需要放大
-      deltaX *= 2;
-      deltaY *= 2;
-    } else {
-      // 鼠标滚轮的处理
-      if (deltaMode === 1) { // 行滚动模式
-        deltaX *= 20; // 每行约20像素
-        deltaY *= 20;
-      } else if (deltaMode === 2) { // 页面滚动模式
-        deltaX *= 400; // 每页约400像素
-        deltaY *= 400;
-      }
-    }
-
-    // 累积滚动量（用于减少发送频率）
-    optimizer.accumulated.x += deltaX;
-    optimizer.accumulated.y += deltaY;
-
-    // 构建滚动命令
-    const command = {
-      type: 'scroll',
-      x: -Math.round(optimizer.accumulated.x), // 注意方向
-      y: -Math.round(optimizer.accumulated.y),
-      deltaMode: deltaMode,
-      isTrackpad: isTrackpad,
-      coords: coords,
-      ctrlKey: e.ctrlKey, // 支持Ctrl+滚轮缩放
-      shiftKey: e.shiftKey, // 支持Shift+滚轮横向滚动
-      altKey: e.altKey,
-      metaKey: e.metaKey,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-
-    // 检查是否可以立即发送（节流检查）
-    const timeSinceLastSend = now - optimizer.lastSendTime;
-    if (timeSinceLastSend >= optimizer.throttleDelay) {
-      // 可以立即发送
-      this.doSendScrollCommand(command);
-      optimizer.lastSendTime = now;
-      optimizer.accumulated = { x: 0, y: 0 }; // 重置累积量
-      
-      // 清除待发送的指令
-      if (optimizer.timer) {
-        clearTimeout(optimizer.timer);
-        optimizer.timer = null;
-      }
-      optimizer.pendingCommand = null;
-    } else {
-      // 需要等待，更新待发送指令
-      optimizer.pendingCommand = command;
-      
-      // 如果没有定时器，创建一个
-      if (!optimizer.timer) {
-        const remainingDelay = optimizer.throttleDelay - timeSinceLastSend;
-        const actualDelay = Math.min(remainingDelay, optimizer.maxPendingTime);
-        
-        optimizer.timer = setTimeout(() => {
-          if (optimizer.pendingCommand) {
-            this.doSendScrollCommand(optimizer.pendingCommand);
-            optimizer.lastSendTime = Date.now();
-            optimizer.accumulated = { x: 0, y: 0 }; // 重置累积量
-            optimizer.pendingCommand = null;
-          }
-          optimizer.timer = null;
-        }, actualDelay);
-      }
-    }
-
-    // 设置累积量重置定时器
-    if (optimizer.resetTimer) {
-      clearTimeout(optimizer.resetTimer);
-    }
-    optimizer.resetTimer = setTimeout(() => {
-      if (!optimizer.timer) { // 只在没有待发送命令时重置
-        optimizer.accumulated = { x: 0, y: 0 };
-        // 重置调试信息显示
-        if (this.debugMode && this.dom.scrollStatus) {
-          this.dom.scrollStatus.textContent = '静止 (0, 0)';
-        }
-      }
-    }, optimizer.resetDelay);
-
-    // 更新调试信息
-    if (this.debugMode) {
-      // 更新滚轮状态显示
-      if (this.dom.scrollStatus) {
-        const scrollInfo = `${Math.abs(optimizer.accumulated.x) > 0 || Math.abs(optimizer.accumulated.y) > 0 ? '滚动中' : '静止'} (${Math.round(optimizer.accumulated.x)}, ${Math.round(optimizer.accumulated.y)})`;
-        this.dom.scrollStatus.textContent = scrollInfo;
-      }
-      
-      // 更新输入设备显示
-      if (this.dom.inputDevice) {
-        const deviceInfo = isTrackpad ? '触摸板' : '鼠标滚轮';
-        const modeInfo = deltaMode === 0 ? '像素' : deltaMode === 1 ? '行' : '页';
-        this.dom.inputDevice.textContent = `${deviceInfo} (${modeInfo}模式)`;
-      }
-      
-      // 详细日志（降低频率）
-      if (Math.random() < 0.1) {
-        console.log('[滚轮优化] 事件信息:', {
-          deltaX: e.deltaX,
-          deltaY: e.deltaY,
-          deltaMode: deltaMode,
-          isTrackpad: isTrackpad,
-          accumulated: optimizer.accumulated,
-          coords: coords,
-          modifiers: {
-            ctrl: e.ctrlKey,
-            shift: e.shiftKey,
-            alt: e.altKey,
-            meta: e.metaKey
-          }
-        });
-      }
-    }
-  }
-
-  /**
-   * 检测触摸板手势
-   */
-  detectTrackpadGesture(e) {
-    // 触摸板特征检测
-    // 1. 触摸板通常有更精细的deltaY值（小数）
-    // 2. 触摸板支持deltaX（水平滚动）
-    // 3. 触摸板的deltaMode通常是0（像素模式）
-    // 4. 触摸板的滚动值通常较小且连续
-    // 5. 触摸板支持缩放手势（Ctrl+滚轮）
-    
-    const hasDecimalDelta = (e.deltaY % 1 !== 0) || (e.deltaX % 1 !== 0);
-    const hasHorizontalScroll = Math.abs(e.deltaX) > 0;
-    const isPixelMode = e.deltaMode === 0;
-    const hasSmallDelta = Math.abs(e.deltaY) < 100 && Math.abs(e.deltaX) < 100;
-    const hasDiagonalScroll = Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) > 0;
-    const isPinchZoom = e.ctrlKey && (Math.abs(e.deltaY) > 0);
-    
-    // 检测是否为缩放手势
-    const isZoomGesture = isPinchZoom && hasSmallDelta && isPixelMode;
-    
-    // 触摸板通常满足这些条件中的多个
-    const trackpadScore = 
-      (hasDecimalDelta ? 2 : 0) +
-      (hasHorizontalScroll ? 1 : 0) +
-      (isPixelMode ? 1 : 0) +
-      (hasSmallDelta ? 1 : 0) +
-      (hasDiagonalScroll ? 1 : 0) +
-      (isZoomGesture ? 3 : 0); // 缩放手势强烈表明是触摸板
-    
-    // 存储检测到的手势类型以供调试
-    if (this.debugMode) {
-      const gestureType = isZoomGesture ? '缩放' : 
-                         hasDiagonalScroll ? '对角滚动' : 
-                         hasHorizontalScroll ? '水平滚动' : 
-                         '垂直滚动';
-      
-      if (this.dom.inputDevice && Math.random() < 0.1) {
-        const deviceInfo = trackpadScore >= 2 ? '触摸板' : '鼠标滚轮';
-        const modeInfo = e.deltaMode === 0 ? '像素' : e.deltaMode === 1 ? '行' : '页';
-        this.dom.inputDevice.textContent = `${deviceInfo} - ${gestureType} (${modeInfo}模式)`;
-      }
-    }
-    
-    return trackpadScore >= 2;
-  }
-
-  /**
-   * 实际发送滚轮命令
-   */
-  doSendScrollCommand(command) {
-    const p2p = this.p2pConnections.values().next().value;
-    if (p2p) {
-      p2p.sendControlCommand(command);
-      
-      // 调试信息（减少日志频率）
-      if (this.debugMode && Math.random() < 0.05) {
-        console.log('[滚轮发送] 命令:', {
-          scroll: { x: command.x, y: command.y },
-          isTrackpad: command.isTrackpad,
-          deltaMode: command.deltaMode,
-          coords: command.coords,
-          timestamp: Date.now()
-        });
-      }
-    }
-  }
-  
-  handleRemoteMouseDown(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[鼠标按下] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) return;
-
-    // 确定按键类型
-    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
-    
-    // 更新拖拽状态
-    this.dragState = {
-      isDragging: true,
-      button: button,
-      startX: coords.x,
-      startY: coords.y,
-      startTime: Date.now()
-    };
-
-    // 添加拖拽视觉反馈
-    const videoContainer = this.dom.remoteVideo.parentElement;
-    if (videoContainer) {
-      videoContainer.classList.add('dragging');
-    }
-
-    console.log(`[鼠标按下] ${button}键 坐标:`, coords);
-
-    // 设置长按定时器
-    this.longPressTimer = setTimeout(() => {
-      if (this.dragState.isDragging) {
-        console.log('[长按检测] 触发长按');
-        const longPressCommand = {
-          type: 'longpress',
-          button: button,
-          x: coords.x,
-          y: coords.y,
-          clientPlatform: window.electronAPI.platform,
-          videoResolution: {
-            width: this.dom.remoteVideo.videoWidth,
-            height: this.dom.remoteVideo.videoHeight
-          },
-          screenInfo: screenInfo
-        };
-        p2p.sendControlCommand(longPressCommand);
-      }
-    }, this.longPressDelay);
-
-    // 发送鼠标按下事件
-    const command = {
-      type: 'mousedown',
-      button: button,
-      x: coords.x,
-      y: coords.y,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-
-    p2p.sendControlCommand(command);
-  }
-
-  handleRemoteMouseUp(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[鼠标释放] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) return;
-
-    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
-    const wasDragging = this.dragState.isDragging;
-    const dragDuration = Date.now() - this.dragState.startTime;
-
-    console.log(`[鼠标释放] ${button}键 坐标:`, coords, `拖拽:${wasDragging} 时长:${dragDuration}ms`);
-
-    // 清除长按定时器
-    if (this.longPressTimer) {
-      clearTimeout(this.longPressTimer);
-      this.longPressTimer = null;
-    }
-
-    // 发送鼠标释放事件
-    const command = {
-      type: 'mouseup',
-      button: button,
-      x: coords.x,
-      y: coords.y,
-      wasDragging: wasDragging,
-      dragDuration: dragDuration,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-
-    // 如果是拖拽结束，添加拖拽信息
-    if (wasDragging) {
-      command.startX = this.dragState.startX;
-      command.startY = this.dragState.startY;
-    }
-
-    p2p.sendControlCommand(command);
-
-    // 重置拖拽状态
-    this.dragState.isDragging = false;
-
-    // 移除拖拽视觉反馈
-    const videoContainer = this.dom.remoteVideo.parentElement;
-    if (videoContainer) {
-      videoContainer.classList.remove('dragging');
-    }
-  }
-
-  handleRemoteMouseClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Click事件在mouseup之后触发，这里主要用于处理简单点击
-    // 复杂的交互已经在mousedown/mouseup中处理
-    if (this.debugMode) {
-      console.log('[鼠标点击] Click事件触发');
-    }
-  }
-
-  handleRemoteDoubleClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[双击] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) return;
-
-    const button = e.button === 0 ? 'left' : e.button === 1 ? 'middle' : 'right';
-    
-    console.log('[双击] 发送坐标:', coords);
-
-    const command = {
-      type: 'doubleclick',
-      button: button,
-      x: coords.x,
-      y: coords.y,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-
-    p2p.sendControlCommand(command);
-  }
-
-  handleRemoteContextMenu(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[右键菜单] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) return;
-
-    console.log('[右键菜单] 发送坐标:', coords);
-
-    const command = {
-      type: 'contextmenu',
-      x: coords.x,
-      y: coords.y,
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
-      },
-      screenInfo: screenInfo
-    };
-
-    p2p.sendControlCommand(command);
-  }
-  
-  handleRemoteMouseWheel(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!this.isControlEnabled) return;
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    // 检查屏幕信息是否可用
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) {
-      console.warn('[滚轮] 屏幕信息不可用，跳过控制命令');
-      return;
-    }
-
-    // 获取滚轮事件发生的位置
-    const coords = this.calculateVideoCoordinates(e);
-    if (!coords.valid) {
-      console.warn('[滚轮] 坐标无效，跳过控制命令');
-      return;
-    }
-
-    // 使用优化的滚轮发送方法
-    this.sendOptimizedScroll(e, coords, screenInfo);
-  }
-
-  handleRemoteKeyDown(e) {
-    if (!this.isControlEnabled) return;
-    
-    // 某些特殊键需要阻止默认行为
-    const specialKeys = ['Tab', 'F5', 'F11', 'F12', 'Alt', 'Control', 'Meta'];
-    if (specialKeys.includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    console.log('[键盘按下]', { key: e.key, code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey });
-
-    const command = {
-      type: 'keydown',
-      key: e.key,
-      code: e.code,
-      ctrlKey: e.ctrlKey,
-      altKey: e.altKey,
-      shiftKey: e.shiftKey,
-      metaKey: e.metaKey,
-      clientPlatform: window.electronAPI.platform
-    };
-
-    p2p.sendControlCommand(command);
-  }
-
-  handleRemoteKeyUp(e) {
-    if (!this.isControlEnabled) return;
-    
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-
-    console.log('[键盘释放]', { key: e.key, code: e.code });
-
-    const command = {
-      type: 'keyup',
-      key: e.key,
-      code: e.code,
-      ctrlKey: e.ctrlKey,
-      altKey: e.altKey,
-      shiftKey: e.shiftKey,
-      metaKey: e.metaKey,
-      clientPlatform: window.electronAPI.platform
     };
 
     p2p.sendControlCommand(command);
@@ -2449,9 +1617,619 @@ class ScreenShareApp {
   updateAppStatus(text) {
     this.dom.appStatus.textContent = text;
   }
+  
+  // 更新光标模式指示器
+  updateCursorModeIndicator(mode) {
+    const indicator = document.getElementById('cursorModeIndicator');
+    const text = document.getElementById('cursorModeText');
+    
+    if (indicator && text) {
+      // 显示指示器
+      indicator.classList.add('show');
+      
+      // 移除之前的模式类
+      indicator.classList.remove('global-mode', 'dom-mode');
+      
+      if (mode === 'global') {
+        indicator.classList.add('global-mode');
+        text.textContent = '全局鼠标模式';
+      } else {
+        indicator.classList.add('dom-mode');
+        text.textContent = 'DOM事件模式';
+      }
+      
+      // 3秒后自动隐藏
+      setTimeout(() => {
+        indicator.classList.remove('show');
+      }, 3000);
+    }
+  }
+
+  // 新增：切换全局鼠标模式
+  async toggleGlobalMouseMode() {
+    try {
+      if (!this.globalMouseMode) {
+        // 启动全局鼠标模式
+        const result = await window.electronAPI.startGlobalMouseListening();
+        if (result.success) {
+          this.globalMouseMode = true;
+          
+          // 注册全局鼠标事件监听
+          window.electronAPI.onGlobalMouseMove(this.handleGlobalMouseMove);
+          window.electronAPI.onCursorVisibilityChanged(this.handleCursorVisibilityChanged);
+          
+          // 只隐藏视频区域的原生光标，让用户通过远程视频中的光标获得反馈
+          this.hideVideoAreaCursor();
+          
+          console.log('[全局鼠标] 模式已启动');
+          this.updateAppStatus('全局鼠标模式已启动 - 通过远程视频中的光标获得反馈');
+          
+          // 更新按钮状态
+          this.updateGlobalMouseButton(true);
+          
+          // 更新模式指示器
+          this.updateCursorModeIndicator('global');
+          
+        } else {
+          console.error('[全局鼠标] 启动失败:', result.message);
+          this.updateAppStatus(`全局鼠标模式启动失败: ${result.message}`);
+        }
+      } else {
+        // 停止全局鼠标模式
+        await this.stopGlobalMouseMode();
+      }
+    } catch (error) {
+      console.error('[全局鼠标] 切换失败:', error);
+      this.updateAppStatus(`全局鼠标模式切换失败: ${error.message}`);
+    }
+  }
+
+  // 停止全局鼠标模式
+  async stopGlobalMouseMode() {
+    try {
+      if (this.globalMouseMode) {
+        // 停止全局鼠标监听
+        await window.electronAPI.stopGlobalMouseListening();
+        
+        // 移除事件监听器
+        window.electronAPI.removeGlobalMouseListeners();
+        
+        // 恢复视频区域的原生光标
+        this.showVideoAreaCursor();
+        
+        this.globalMouseMode = false;
+        
+        console.log('[全局鼠标] 模式已停止');
+        this.updateAppStatus('全局鼠标模式已停止 - 已恢复DOM事件模式');
+        
+        // 更新按钮状态
+        this.updateGlobalMouseButton(false);
+        
+        // 更新模式指示器
+        this.updateCursorModeIndicator('dom');
+      }
+    } catch (error) {
+      console.error('[全局鼠标] 停止失败:', error);
+    }
+  }
+
+  // 创建虚拟光标 - 已禁用，使用远程视频中的光标反馈
+  createVirtualCursor() {
+    // 不再创建虚拟光标，用户通过远程视频中的光标获得视觉反馈
+    console.log('[虚拟光标] 已禁用 - 使用远程视频中的光标反馈');
+  }
+
+  // 销毁虚拟光标 - 已禁用
+  destroyVirtualCursor() {
+    // 无需操作
+  }
+
+  // 更新虚拟光标位置 - 已禁用
+  updateVirtualCursorPosition(x, y) {
+    // 无需操作，使用远程视频中的光标反馈
+  }
+  
+  // 更新虚拟光标状态 - 已禁用
+  updateVirtualCursorState(state) {
+    // 无需操作，使用远程视频中的光标反馈
+  }
+
+  // 隐藏视频区域的原生光标
+  hideVideoAreaCursor() {
+    if (this.dom.remoteVideo) {
+      this.dom.remoteVideo.style.cursor = 'none';
+      this.dom.remoteVideo.parentElement.style.cursor = 'none';
+    }
+    
+    // 添加全局鼠标模式标记（用于样式控制，但不隐藏整个页面光标）
+    document.body.classList.add('global-mouse-mode');
+  }
+
+  // 显示视频区域的原生光标
+  showVideoAreaCursor() {
+    if (this.dom.remoteVideo) {
+      this.dom.remoteVideo.style.cursor = '';
+      this.dom.remoteVideo.parentElement.style.cursor = '';
+    }
+    
+    // 移除全局鼠标模式标记
+    document.body.classList.remove('global-mouse-mode');
+  }
+
+  // 处理全局鼠标移动
+  handleGlobalMouseMove(data) {
+    if (!this.globalMouseMode || !this.isControlEnabled) return;
+    
+    const { x, y, previousX, previousY, timestamp } = data;
+    
+    // 检查鼠标是否在视频区域内
+    const videoRect = this.dom.remoteVideo.getBoundingClientRect();
+    const relativeX = x - videoRect.left;
+    const relativeY = y - videoRect.top;
+    
+    const isInVideoArea = relativeX >= 0 && relativeX <= videoRect.width && 
+                         relativeY >= 0 && relativeY <= videoRect.height;
+    
+    if (isInVideoArea) {
+      // 计算相对于视频的坐标
+      const videoCoords = this.calculateGlobalMouseToVideoCoords(relativeX, relativeY);
+      
+      if (videoCoords.valid) {
+        // 发送远程控制命令
+        this.sendGlobalMouseMove(videoCoords, data);
+        
+        // 更新调试信息
+        if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
+          this.dom.mouseCoords.textContent = `全局(${x}, ${y})`;
+          this.dom.calcCoords.textContent = `视频(${videoCoords.x}, ${videoCoords.y}) ✓`;
+        }
+      }
+    }
+    
+    this.lastGlobalMousePosition = { x, y };
+  }
+
+  // 计算全局鼠标坐标到视频坐标的转换
+  calculateGlobalMouseToVideoCoords(relativeX, relativeY) {
+    const video = this.dom.remoteVideo;
+    
+    if (!video.videoWidth || !video.videoHeight) {
+      return { x: 0, y: 0, valid: false };
+    }
+    
+    const rect = video.getBoundingClientRect();
+    const videoAspectRatio = video.videoWidth / video.videoHeight;
+    const containerAspectRatio = rect.width / rect.height;
+    
+    // 计算视频在容器中的实际显示区域
+    let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      videoDisplayWidth = rect.width;
+      videoDisplayHeight = rect.width / videoAspectRatio;
+      offsetX = 0;
+      offsetY = (rect.height - videoDisplayHeight) / 2;
+    } else {
+      videoDisplayWidth = rect.height * videoAspectRatio;
+      videoDisplayHeight = rect.height;
+      offsetX = (rect.width - videoDisplayWidth) / 2;
+      offsetY = 0;
+    }
+    
+    // 检查是否在视频显示区域内
+    const videoRelativeX = relativeX - offsetX;
+    const videoRelativeY = relativeY - offsetY;
+    
+    const valid = videoRelativeX >= 0 && videoRelativeX <= videoDisplayWidth && 
+                  videoRelativeY >= 0 && videoRelativeY <= videoDisplayHeight;
+    
+    if (!valid) {
+      return { x: 0, y: 0, valid: false };
+    }
+    
+    // 转换为视频原始分辨率的坐标
+    const scaleX = video.videoWidth / videoDisplayWidth;
+    const scaleY = video.videoHeight / videoDisplayHeight;
+    
+    let x = videoRelativeX * scaleX;
+    let y = videoRelativeY * scaleY;
+    
+    // 应用窗口共享的坐标转换（如果需要）
+    const screenInfo = this.getRemoteScreenInfo();
+    if (screenInfo && this.isWindowShare(screenInfo)) {
+      let offsetX = 0, offsetY = 0;
+      
+      if (screenInfo.actualWindowBounds) {
+        offsetX = screenInfo.actualWindowBounds.x;
+        offsetY = screenInfo.actualWindowBounds.y;
+      } else if (screenInfo.windowBounds) {
+        offsetX = screenInfo.windowBounds.x;
+        offsetY = screenInfo.windowBounds.y;
+      } else {
+        offsetX = screenInfo.bounds.x;
+        offsetY = screenInfo.bounds.y;
+      }
+      
+      x += offsetX;
+      y += offsetY;
+    }
+    
+    return { x: Math.round(x), y: Math.round(y), valid: true };
+  }
+
+  // 发送全局鼠标移动命令
+  sendGlobalMouseMove(coords, globalData) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+    
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) return;
+    
+    const command = {
+      type: 'mousemove',
+      x: coords.x,
+      y: coords.y,
+      globalPosition: { x: globalData.x, y: globalData.y },
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      },
+      screenInfo: screenInfo,
+      source: 'global-mouse' // 标记来源
+    };
+    
+    p2p.sendControlCommand(command);
+    
+    if (this.debugMode && Math.random() < 0.01) {
+      console.log('[全局鼠标] 发送移动命令:', {
+        视频坐标: coords,
+        全局坐标: globalData,
+        时间戳: globalData.timestamp
+      });
+    }
+  }
+
+  // 处理光标可见性变化 - 已简化
+  handleCursorVisibilityChanged(data) {
+    console.log('[光标可见性] 状态变化:', data);
+    // 无需操作，使用远程视频中的光标反馈
+  }
+
+  // 更新全局鼠标按钮状态
+  updateGlobalMouseButton(isActive) {
+    const button = document.getElementById('globalMouseToggle');
+    if (button) {
+      const textSpan = button.querySelector('.btn-text');
+      const iconSpan = button.querySelector('.btn-icon');
+      
+      if (textSpan) {
+        textSpan.textContent = isActive ? '停止全局' : '全局鼠标';
+      }
+      if (iconSpan) {
+        iconSpan.textContent = isActive ? '⏹️' : '🖱️';
+      }
+      
+      if (isActive) {
+        button.classList.add('danger');
+        button.classList.remove('global-mouse-toggle');
+      } else {
+        button.classList.remove('danger');
+        button.classList.add('global-mouse-toggle');
+      }
+    }
+  }
+
+  // 新增：启用指针锁定
+  async enablePointerLock() {
+    try {
+      if (!this.dom.videoContainer) {
+        console.error('[指针锁定] 视频容器不存在');
+        return;
+      }
+
+      // 请求指针锁定
+      const requestPointerLock = this.dom.videoContainer.requestPointerLock || 
+                                this.dom.videoContainer.mozRequestPointerLock || 
+                                this.dom.videoContainer.webkitRequestPointerLock;
+
+      if (requestPointerLock) {
+        await requestPointerLock.call(this.dom.videoContainer);
+                 console.log('[指针锁定] 已启用');
+         
+         // 绑定指针锁定事件
+         this.bindPointerLockEvents();
+         
+         // 添加指针锁定样式
+         this.dom.videoContainer.classList.add('pointer-locked');
+         
+         // 隐藏提示
+         if (this.dom.pointerLockHint) {
+           this.dom.pointerLockHint.classList.remove('show');
+         }
+         
+         this.updateAppStatus('指针锁定已启用 - 鼠标被限制在视频区域内');
+      } else {
+        console.warn('[指针锁定] 浏览器不支持Pointer Lock API');
+        this.updateAppStatus('浏览器不支持指针锁定，使用普通模式');
+      }
+    } catch (error) {
+      console.error('[指针锁定] 启用失败:', error);
+    }
+  }
+
+  // 新增：禁用指针锁定
+  async disablePointerLock() {
+    try {
+      const exitPointerLock = document.exitPointerLock || 
+                             document.mozExitPointerLock || 
+                             document.webkitExitPointerLock;
+
+      if (exitPointerLock && document.pointerLockElement) {
+        exitPointerLock.call(document);
+        console.log('[指针锁定] 已禁用');
+      }
+
+             // 移除指针锁定样式
+       if (this.dom.videoContainer) {
+         this.dom.videoContainer.classList.remove('pointer-locked');
+       }
+
+       // 移除指针锁定事件
+       this.unbindPointerLockEvents();
+      
+      this.updateAppStatus('指针锁定已禁用');
+    } catch (error) {
+      console.error('[指针锁定] 禁用失败:', error);
+    }
+  }
+
+  // 新增：绑定指针锁定相关事件
+  bindPointerLockEvents() {
+         // 指针锁定状态变化监听
+     this.pointerLockChangeHandler = () => {
+       const isLocked = document.pointerLockElement === this.dom.videoContainer;
+       console.log('[指针锁定] 状态变化:', isLocked ? '已锁定' : '已解锁');
+       
+       // 更新调试信息
+       if (this.dom.pointerLockStatus) {
+         this.dom.pointerLockStatus.textContent = isLocked ? '已锁定' : '未锁定';
+       }
+       
+       if (!isLocked && this.isControlEnabled) {
+         // 如果意外失去锁定，显示提示
+         this.updateAppStatus('指针锁定已失去 - 点击视频区域重新锁定');
+         
+         // 重置虚拟鼠标位置
+         this.virtualMousePosition = null;
+         
+         // 自动重新请求锁定（可选）
+         setTimeout(() => {
+           if (this.isControlEnabled && !this.globalMouseMode) {
+             this.enablePointerLock();
+           }
+         }, 100);
+       }
+     };
+
+    // 指针锁定错误监听
+    this.pointerLockErrorHandler = () => {
+      console.error('[指针锁定] 请求失败');
+      this.updateAppStatus('指针锁定请求失败 - 请手动点击视频区域');
+    };
+
+         // 监听鼠标移动事件（指针锁定模式下使用movementX/Y）
+     this.pointerLockMouseMoveHandler = (event) => {
+       if (!this.isControlEnabled || this.globalMouseMode) return;
+       
+       // 在指针锁定模式下，使用相对移动量
+       const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+       const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+       
+       if (movementX !== 0 || movementY !== 0) {
+         this.handlePointerLockMouseMove(movementX, movementY);
+       }
+     };
+
+     // 指针锁定模式下的键盘事件处理（主要处理ESC键）
+     this.pointerLockKeyDownHandler = (event) => {
+       if (!this.isControlEnabled) return;
+       
+       // 在指针锁定模式下，ESC键用于退出指针锁定和控制模式
+       if (event.key === 'Escape') {
+         event.preventDefault();
+         event.stopPropagation();
+         console.log('[指针锁定] ESC键退出控制模式');
+         this.updateAppStatus('ESC键退出指针锁定和控制模式');
+         this.toggleRemoteControl();
+         return;
+       }
+     };
+
+    // 绑定事件
+    document.addEventListener('pointerlockchange', this.pointerLockChangeHandler);
+    document.addEventListener('pointerlockerror', this.pointerLockErrorHandler);
+    
+    // 兼容性事件
+    document.addEventListener('mozpointerlockchange', this.pointerLockChangeHandler);
+    document.addEventListener('webkitpointerlockchange', this.pointerLockChangeHandler);
+    document.addEventListener('mozpointerlockerror', this.pointerLockErrorHandler);
+    document.addEventListener('webkitpointerlockerror', this.pointerLockErrorHandler);
+    
+         if (this.dom.videoContainer) {
+       this.dom.videoContainer.addEventListener('mousemove', this.pointerLockMouseMoveHandler, { passive: false });
+       // 在指针锁定模式下，为视频容器添加键盘事件监听（用于处理ESC键）
+       this.dom.videoContainer.addEventListener('keydown', this.pointerLockKeyDownHandler, { passive: false });
+     }
+  }
+
+  // 新增：移除指针锁定事件
+  unbindPointerLockEvents() {
+    if (this.pointerLockChangeHandler) {
+      document.removeEventListener('pointerlockchange', this.pointerLockChangeHandler);
+      document.removeEventListener('mozpointerlockchange', this.pointerLockChangeHandler);
+      document.removeEventListener('webkitpointerlockchange', this.pointerLockChangeHandler);
+    }
+
+    if (this.pointerLockErrorHandler) {
+      document.removeEventListener('pointerlockerror', this.pointerLockErrorHandler);
+      document.removeEventListener('mozpointerlockerror', this.pointerLockErrorHandler);
+      document.removeEventListener('webkitpointerlockerror', this.pointerLockErrorHandler);
+    }
+
+         if (this.pointerLockMouseMoveHandler && this.dom.videoContainer) {
+       this.dom.videoContainer.removeEventListener('mousemove', this.pointerLockMouseMoveHandler);
+     }
+
+     if (this.pointerLockKeyDownHandler && this.dom.videoContainer) {
+       this.dom.videoContainer.removeEventListener('keydown', this.pointerLockKeyDownHandler);
+     }
+
+     // 清理引用
+     this.pointerLockChangeHandler = null;
+     this.pointerLockErrorHandler = null;
+     this.pointerLockMouseMoveHandler = null;
+     this.pointerLockKeyDownHandler = null;
+  }
+
+  // 新增：处理指针锁定模式下的鼠标移动
+  handlePointerLockMouseMove(movementX, movementY) {
+    // 累积相对移动量到虚拟鼠标位置
+    if (!this.virtualMousePosition) {
+      // 初始化虚拟鼠标位置为视频中心
+      const videoRect = this.dom.remoteVideo.getBoundingClientRect();
+      this.virtualMousePosition = {
+        x: videoRect.width / 2,
+        y: videoRect.height / 2
+      };
+    }
+
+    // 更新虚拟鼠标位置
+    this.virtualMousePosition.x += movementX;
+    this.virtualMousePosition.y += movementY;
+
+    // 限制在视频边界内
+    const videoRect = this.dom.remoteVideo.getBoundingClientRect();
+    this.virtualMousePosition.x = Math.max(0, Math.min(videoRect.width, this.virtualMousePosition.x));
+    this.virtualMousePosition.y = Math.max(0, Math.min(videoRect.height, this.virtualMousePosition.y));
+
+    // 转换为远程坐标并发送
+    const coords = this.calculateVideoToRemoteCoords(this.virtualMousePosition.x, this.virtualMousePosition.y);
+    
+    if (coords.valid) {
+      this.sendMouseCommand('mousemove', coords);
+      
+      // 更新调试信息
+      if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
+        this.dom.mouseCoords.textContent = `虚拟(${Math.round(this.virtualMousePosition.x)}, ${Math.round(this.virtualMousePosition.y)})`;
+        this.dom.calcCoords.textContent = `远程(${coords.x}, ${coords.y}) ✓`;
+      }
+    }
+  }
+
+  // 新增：计算视频坐标到远程坐标的转换（复用现有逻辑）
+  calculateVideoToRemoteCoords(videoX, videoY) {
+    const video = this.dom.remoteVideo;
+    
+    if (!video.videoWidth || !video.videoHeight) {
+      return { x: 0, y: 0, valid: false };
+    }
+    
+    const rect = video.getBoundingClientRect();
+    const videoAspectRatio = video.videoWidth / video.videoHeight;
+    const containerAspectRatio = rect.width / rect.height;
+    
+    // 计算视频在容器中的实际显示区域
+    let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      videoDisplayWidth = rect.width;
+      videoDisplayHeight = rect.width / videoAspectRatio;
+      offsetX = 0;
+      offsetY = (rect.height - videoDisplayHeight) / 2;
+    } else {
+      videoDisplayWidth = rect.height * videoAspectRatio;
+      videoDisplayHeight = rect.height;
+      offsetX = (rect.width - videoDisplayWidth) / 2;
+      offsetY = 0;
+    }
+    
+    // 转换为视频显示区域内的坐标
+    const videoRelativeX = videoX - offsetX;
+    const videoRelativeY = videoY - offsetY;
+    
+    const valid = videoRelativeX >= 0 && videoRelativeX <= videoDisplayWidth && 
+                  videoRelativeY >= 0 && videoRelativeY <= videoDisplayHeight;
+    
+    if (!valid) {
+      return { x: 0, y: 0, valid: false };
+    }
+    
+    // 转换为视频原始分辨率的坐标
+    const scaleX = video.videoWidth / videoDisplayWidth;
+    const scaleY = video.videoHeight / videoDisplayHeight;
+    
+    let x = videoRelativeX * scaleX;
+    let y = videoRelativeY * scaleY;
+    
+    // 应用窗口共享的坐标转换（如果需要）
+    const screenInfo = this.getRemoteScreenInfo();
+    if (screenInfo && this.isWindowShare(screenInfo)) {
+      let offsetX = 0, offsetY = 0;
+      
+      if (screenInfo.actualWindowBounds) {
+        offsetX = screenInfo.actualWindowBounds.x;
+        offsetY = screenInfo.actualWindowBounds.y;
+      } else if (screenInfo.windowBounds) {
+        offsetX = screenInfo.windowBounds.x;
+        offsetY = screenInfo.windowBounds.y;
+      } else {
+        offsetX = screenInfo.bounds.x;
+        offsetY = screenInfo.bounds.y;
+      }
+      
+      x += offsetX;
+      y += offsetY;
+    }
+    
+    return { x: Math.round(x), y: Math.round(y), valid: true };
+  }
+
+  // 新增：发送鼠标命令的通用方法
+  sendMouseCommand(type, coords, extra = {}) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (!p2p) return;
+    
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) return;
+    
+    const command = {
+      type: type,
+      x: coords.x,
+      y: coords.y,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      },
+      screenInfo: screenInfo,
+      source: 'pointer-lock', // 标记来源
+      ...extra
+    };
+    
+    p2p.sendControlCommand(command);
+  }
 }
 
 // 启动应用
 document.addEventListener('DOMContentLoaded', () => {
-  new ScreenShareApp();
+  const app = new ScreenShareApp();
+  
+  // 绑定全局鼠标控制按钮事件
+  const globalMouseToggle = document.getElementById('globalMouseToggle');
+  if (globalMouseToggle) {
+    globalMouseToggle.addEventListener('click', () => {
+      app.toggleGlobalMouseMode();
+    });
+  }
 }); 

@@ -474,7 +474,6 @@ body {
 .video-container {
   position: relative;
   background: #000;
-  border-radius: 8px;
   overflow: hidden;
   min-height: 400px;
 }
@@ -580,13 +579,10 @@ body {
 }
 
 .control-enabled .video-container {
-  border: 2px solid #28a745;
-  border-radius: 10px;
 }
 
 /* 拖拽状态样式 */
 .video-container.dragging {
-  border: 3px solid #007bff !important;
   box-shadow: 0 0 15px rgba(0, 123, 255, 0.5);
 }
 
@@ -1189,4 +1185,182 @@ body {
   .key-label {
     font-size: 0.65rem;
   }
+}
+
+/* 全局鼠标模式样式 - 只隐藏视频区域光标 */
+.global-mouse-mode .video-container {
+  cursor: none !important;
+}
+
+.global-mouse-mode .video-container * {
+  cursor: none !important;
+}
+
+/* 虚拟光标样式 - 已禁用，保留用于兼容性 */
+.virtual-cursor {
+  display: none !important; /* 完全隐藏虚拟光标 */
+}
+
+/* 全局鼠标模式时的视频容器样式 */
+.global-mouse-mode .video-container {
+  position: relative;
+}
+
+.global-mouse-mode .video-container::before {
+  content: '全局鼠标模式 - 高精度坐标';
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 123, 255, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* 调试模式下的全局鼠标信息 */
+.debug-global-mouse {
+  background: rgba(255, 165, 0, 0.1);
+  border: 1px solid #ffa500;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px 0;
+}
+
+.debug-global-mouse .debug-item {
+  display: flex;
+  justify-content: space-between;
+  margin: 2px 0;
+  font-size: 12px;
+}
+
+.debug-global-mouse .debug-label {
+  font-weight: bold;
+  color: #ffa500;
+}
+
+.debug-global-mouse .debug-value {
+  color: #333;
+  font-family: monospace;
+}
+
+/* 全局鼠标控制按钮 */
+.global-mouse-controls {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.global-mouse-toggle {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.global-mouse-toggle:hover {
+  background: #5a6268;
+}
+
+.global-mouse-toggle.active {
+  background: #dc3545;
+}
+
+.global-mouse-toggle.active:hover {
+  background: #c82333;
+}
+
+/* 光标模式指示器 */
+.cursor-mode-indicator {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.cursor-mode-indicator.show {
+  opacity: 1;
+}
+
+.cursor-mode-indicator.global-mode {
+  background: rgba(0, 123, 255, 0.9);
+}
+
+.cursor-mode-indicator.dom-mode {
+  background: rgba(40, 167, 69, 0.9);
+}
+
+/* 视频区域拖拽状态 */
+.video-container.dragging {
+  cursor: grabbing !important;
+}
+
+.global-mouse-mode .video-container.dragging {
+  cursor: none !important;
+}
+
+/* 指针锁定模式样式 */
+.video-container.pointer-locked {
+  cursor: none !important;
+  border: 2px solid #007bff;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+.video-container.pointer-locked::after {
+  content: "指针已锁定 - 鼠标被限制在此区域内 | 按ESC键退出";
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 123, 255, 0.9);
+  color: white;
+  padding: 5px 15px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* 指针锁定提示 */
+.pointer-lock-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 15px 25px;
+  border-radius: 8px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 101;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.pointer-lock-hint.show {
+  opacity: 1;
+}
+
+/* 全局鼠标模式下的特殊效果 - 已禁用 */
+/* 无需虚拟光标的特殊效果，使用远程视频中的光标反馈 */
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  /* 虚拟光标已禁用，无需响应式样式 */
 }

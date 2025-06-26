@@ -23,6 +23,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 获取窗口详细信息（包括实际位置和大小）
   getWindowDetails: (sourceId) => ipcRenderer.invoke('get-window-details', sourceId),
   
+  // 新增：全局鼠标监听API
+  startGlobalMouseListening: () => ipcRenderer.invoke('start-global-mouse-listening'),
+  stopGlobalMouseListening: () => ipcRenderer.invoke('stop-global-mouse-listening'),
+  registerGlobalMouseEvents: () => ipcRenderer.invoke('register-global-mouse-events'),
+  toggleSystemCursor: (hide) => ipcRenderer.invoke('toggle-system-cursor', hide),
+  getCurrentMousePosition: () => ipcRenderer.invoke('get-current-mouse-position'),
+  
+  // 监听全局鼠标事件
+  onGlobalMouseMove: (callback) => {
+    ipcRenderer.on('global-mouse-move', (event, data) => callback(data));
+  },
+  onCursorVisibilityChanged: (callback) => {
+    ipcRenderer.on('cursor-visibility-changed', (event, data) => callback(data));
+  },
+  
+  // 移除监听器
+  removeGlobalMouseListeners: () => {
+    ipcRenderer.removeAllListeners('global-mouse-move');
+    ipcRenderer.removeAllListeners('cursor-visibility-changed');
+  },
+  
   // 平台信息
   platform: process.platform
 });

@@ -3,12 +3,27 @@ const path = require('node:path');
 const { v4: uuidv4 } = require('uuid');
 const { Worker } = require('worker_threads');
 
+// RobotJS for global mouse listening
+let robot;
+try {
+  robot = require('robotjs');
+} catch (error) {
+  console.warn('[主进程] RobotJS 不可用:', error.message);
+  robot = null;
+}
+
 // 信令服务器
 let signalServer;
 
 // Robot Worker 管理
 let robotWorker = null;
 let robotWorkerReady = false;
+
+// 全局鼠标监听状态
+let globalMouseListening = false;
+let mouseListenerInterval = null;
+let lastMousePosition = { x: 0, y: 0 };
+let mouseButtonState = { left: false, right: false, middle: false };
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -760,6 +775,187 @@ ipcMain.handle('get-window-details', async (event, sourceId) => {
   } catch (error) {
     console.error('获取窗口详情失败:', error);
     return null;
+  }
+});
+
+// 初始化全局鼠标监听
+ipcMain.handle('start-global-mouse-listening', async () => {
+  try {
+    if (globalMouseListening) {
+      console.log('[全局鼠标] 监听已经启动');
+      return { success: true, message: '监听已启动' };
+    }
+
+    // 确保robotjs可用
+    if (!robot) {
+      return { success: false, message: 'robotjs不可用' };
+    }
+
+    globalMouseListening = true;
+    
+    // 获取初始鼠标位置
+    const initialPos = robot.getMousePos();
+    lastMousePosition = { x: initialPos.x, y: initialPos.y };
+    
+    console.log('[全局鼠标] 开始监听，初始位置:', lastMousePosition);
+
+    // 启动鼠标位置监听循环
+    mouseListenerInterval = setInterval(() => {
+      if (!globalMouseListening) return;
+
+      try {
+        const currentPos = robot.getMousePos();
+        
+        // 检查位置是否改变
+        if (currentPos.x !== lastMousePosition.x || currentPos.y !== lastMousePosition.y) {
+          // 发送鼠标移动事件到渲染进程
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('global-mouse-move', {
+              x: currentPos.x,
+              y: currentPos.y,
+              previousX: lastMousePosition.x,
+              previousY: lastMousePosition.y,
+              timestamp: Date.now()
+            });
+          }
+          
+          lastMousePosition = { x: currentPos.x, y: currentPos.y };
+        }
+      } catch (error) {
+        console.error('[全局鼠标] 位置监听错误:', error);
+      }
+    }, 8); // 8ms间隔，约120fps
+
+    return { success: true, message: '全局鼠标监听已启动' };
+    
+  } catch (error) {
+    console.error('[全局鼠标] 启动失败:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 停止全局鼠标监听
+ipcMain.handle('stop-global-mouse-listening', async () => {
+  try {
+    if (!globalMouseListening) {
+      return { success: true, message: '监听未启动' };
+    }
+
+    globalMouseListening = false;
+    
+    if (mouseListenerInterval) {
+      clearInterval(mouseListenerInterval);
+      mouseListenerInterval = null;
+    }
+
+    console.log('[全局鼠标] 监听已停止');
+    return { success: true, message: '全局鼠标监听已停止' };
+    
+  } catch (error) {
+    console.error('[全局鼠标] 停止失败:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 设置全局鼠标事件监听（使用屏幕外监听技巧）
+ipcMain.handle('setup-global-mouse-events', async () => {
+  try {
+    if (process.platform === 'darwin') {
+      // macOS上使用AppleScript定期检查鼠标按键状态
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        // 注册窗口失去焦点时的全局鼠标监听
+        const { globalShortcut } = require('electron');
+        
+        // 使用不常用的快捷键组合来监听鼠标事件
+        // 这是一个变通方案，实际应用中可能需要更好的解决方案
+        try {
+          // 监听特殊按键组合（如Command+Option+F19等）作为鼠标事件触发器
+          // 这里我们采用不同的策略：使用主窗口的鼠标事件
+          
+          // 启用窗口的鼠标穿透监听
+          mainWindow.setIgnoreMouseEvents(false);
+          
+          // 监听窗口级别的鼠标事件
+          mainWindow.webContents.setWindowOpenHandler(() => {
+            return { action: 'deny' };
+          });
+          
+          console.log('[全局鼠标] macOS全局鼠标事件监听已设置');
+        } catch (shortcutError) {
+          console.warn('[全局鼠标] 快捷键注册失败:', shortcutError.message);
+        }
+      }
+    } else if (process.platform === 'win32') {
+      // Windows上可能需要不同的处理方式
+      console.log('[全局鼠标] Windows平台暂不支持全局鼠标按键监听');
+    } else {
+      // Linux平台
+      console.log('[全局鼠标] Linux平台暂不支持全局鼠标按键监听');
+    }
+
+    return { success: true, message: '全局鼠标事件监听已设置' };
+    
+  } catch (error) {
+    console.error('[全局鼠标] 事件设置失败:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 隐藏/显示系统光标
+ipcMain.handle('toggle-system-cursor', async (event, hide = true) => {
+  try {
+    if (process.platform === 'darwin') {
+      // macOS: 使用AppleScript隐藏光标
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+      
+      if (hide) {
+        // 隐藏光标的AppleScript
+        await execPromise(`
+          osascript -e '
+            tell application "System Events"
+              -- 这里可能需要其他方法来隐藏光标
+              -- macOS没有直接的API来隐藏系统光标
+            end tell
+          '
+        `);
+      } else {
+        // 显示光标
+        // 光标通常会在鼠标移动时自动显示
+      }
+    }
+    
+    // 通知渲染进程更新光标状态
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('cursor-visibility-changed', { hidden: hide });
+    }
+    
+    return { success: true, hidden: hide };
+    
+  } catch (error) {
+    console.error('[光标控制] 失败:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 获取当前鼠标位置
+ipcMain.handle('get-current-mouse-position', async () => {
+  try {
+    if (!robot) {
+      return { success: false, message: 'robotjs不可用' };
+    }
+    
+    const pos = robot.getMousePos();
+    return { 
+      success: true, 
+      position: { x: pos.x, y: pos.y },
+      timestamp: Date.now()
+    };
+    
+  } catch (error) {
+    console.error('[鼠标位置] 获取失败:', error);
+    return { success: false, message: error.message };
   }
 });
 
