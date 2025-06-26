@@ -1,9 +1,14 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut, systemPreferences, shell } = require('electron');
 const path = require('node:path');
 const { v4: uuidv4 } = require('uuid');
+const { Worker } = require('worker_threads');
 
 // 信令服务器
 let signalServer;
+
+// Robot Worker 管理
+let robotWorker = null;
+let robotWorkerReady = false;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -214,222 +219,111 @@ function transformCoordinates(data) {
   return { x: Math.round(actualX), y: Math.round(actualY) };
 }
 
-// 远程控制事件处理
-ipcMain.on('remote-control', (event, data) => {
-  try {
-    let robot;
+/**
+ * 初始化 Robot Worker
+ */
+function initRobotWorker() {
+  if (robotWorker) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
     try {
-      robot = require('robotjs');
+      const workerPath = path.join(__dirname, 'lib', 'robot-worker.cjs');
+      robotWorker = new Worker(workerPath);
+      
+      robotWorker.on('message', (message) => {
+        switch (message.type) {
+          case 'ready':
+            robotWorkerReady = true;
+            console.log('[Robot Worker] 已就绪:', message.message, 'PID:', message.pid);
+            resolve();
+            break;
+            
+          case 'processed':
+            // 可选：记录处理完成的操作
+            if (Math.random() < 0.001) { // 偶尔记录，避免日志过多
+              console.log('[Robot Worker] 处理完成:', message.originalType);
+            }
+            break;
+            
+          case 'error':
+            console.error('[Robot Worker] 处理错误:', message.message);
+            break;
+        }
+      });
+      
+      robotWorker.on('error', (error) => {
+        console.error('[Robot Worker] Worker错误:', error);
+        robotWorkerReady = false;
+      });
+      
+      robotWorker.on('exit', (code) => {
+        console.log('[Robot Worker] Worker退出，代码:', code);
+        robotWorkerReady = false;
+        robotWorker = null;
+      });
+      
     } catch (error) {
-      console.error('RobotJS 不可用:', error.message);
-      return;
+      console.error('[Robot Worker] 初始化失败:', error);
+      reject(error);
+    }
+  });
+}
+
+/**
+ * 清理 Robot Worker
+ */
+function cleanupRobotWorker() {
+  if (robotWorker) {
+    console.log('[Robot Worker] 正在关闭...');
+    robotWorker.terminate();
+    robotWorker = null;
+    robotWorkerReady = false;
+  }
+}
+
+// 远程控制事件处理 - 使用 Worker 优化
+ipcMain.on('remote-control', async (event, data) => {
+  try {
+    // 确保 Robot Worker 已初始化
+    if (!robotWorkerReady) {
+      try {
+        await initRobotWorker();
+      } catch (error) {
+        console.error('[远程控制] Robot Worker 初始化失败:', error);
+        return;
+      }
     }
 
-    // 设置鼠标速度
-    robot.setMouseDelay(2);
-    robot.setKeyboardDelay(10);
-
-    console.log('[远程控制] 执行命令:', {
-      type: data.type,
-      hasVideoResolution: !!(data.videoResolution),
-      hasScreenInfo: !!(data.screenInfo),
-      clientPlatform: data.clientPlatform,
-      serverPlatform: process.platform
-    });
-
-    switch (data.type) {
-      case 'mousemove':
-      case 'mousedrag':
-        if (typeof data.x === 'number' && typeof data.y === 'number') {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        break;
-
-      case 'mousedown':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        robot.mouseToggle('down', data.button || 'left');
-        break;
-
-      case 'mouseup':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        robot.mouseToggle('up', data.button || 'left');
-        break;
-
-      case 'mouseclick':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        robot.mouseClick(data.button || 'left', false);
-        break;
-
-      case 'doubleclick':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        robot.mouseClick(data.button || 'left', true);
-        break;
-
-      case 'contextmenu':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        robot.mouseClick('right');
-        break;
-
-      case 'longpress':
-        if (data.x !== undefined && data.y !== undefined) {
-          const coords = transformCoordinates(data);
-          robot.moveMouse(coords.x, coords.y);
-        }
-        // 长按可以通过按下后延时释放来模拟
-        robot.mouseToggle('down', data.button || 'left');
-        setTimeout(() => {
-          robot.mouseToggle('up', data.button || 'left');
-        }, 100);
-        break;
-
-      case 'scroll':
-        if (typeof data.x === 'number' || typeof data.y === 'number') {
-          robot.scrollMouse(Math.round(data.x || 0), Math.round(data.y || 0));
-        }
-        break;
-
-      case 'keydown':
-        if (data.key) {
-          // 处理修饰键
-          const modifiers = [];
-          if (data.ctrlKey) modifiers.push('control');
-          if (data.altKey) modifiers.push('alt');
-          if (data.shiftKey) modifiers.push('shift');
-          if (data.metaKey) modifiers.push(process.platform === 'darwin' ? 'command' : 'meta');
-          
-          // 键名映射 - RobotJS使用不同的键名
-          const keyMap = {
-            'ArrowUp': 'up',
-            'ArrowDown': 'down',
-            'ArrowLeft': 'left',
-            'ArrowRight': 'right',
-            'Delete': 'delete',
-            'Backspace': 'backspace',
-            'Enter': 'enter',
-            'Tab': 'tab',
-            'Escape': 'escape',
-            'Space': 'space',
-            'CapsLock': 'capslock',
-            'Control': 'control',
-            'Alt': 'alt',
-            'Shift': 'shift',
-            'Meta': process.platform === 'darwin' ? 'command' : 'meta'
-          };
-          
-          const robotKey = keyMap[data.key] || data.key.toLowerCase();
-          
-          if (modifiers.length > 0) {
-            robot.keyTap(robotKey, modifiers);
-          } else {
-            robot.keyToggle(robotKey, 'down');
-          }
-        }
-        break;
-
-      case 'keyup':
-        if (data.key) {
-          const keyMap = {
-            'ArrowUp': 'up',
-            'ArrowDown': 'down',
-            'ArrowLeft': 'left',
-            'ArrowRight': 'right',
-            'Delete': 'delete',
-            'Backspace': 'backspace',
-            'Enter': 'enter',
-            'Tab': 'tab',
-            'Escape': 'escape',
-            'Space': 'space',
-            'CapsLock': 'capslock',
-            'Control': 'control',
-            'Alt': 'alt',
-            'Shift': 'shift',
-            'Meta': process.platform === 'darwin' ? 'command' : 'meta'
-          };
-          
-          const robotKey = keyMap[data.key] || data.key.toLowerCase();
-          robot.keyToggle(robotKey, 'up');
-        }
-        break;
-
-      case 'keypress':
-        if (data.key) {
-          robot.keyTap(data.key, data.modifiers || []);
-        }
-        break;
-
-      case 'keytype':
-        // 虚拟键盘文本输入
-        if (data.text) {
-          robot.typeString(data.text);
-        }
-        break;
-
-      case 'shortcut':
-        // 虚拟键盘快捷键
-        if (data.key) {
-          const modifiers = [];
-          if (data.ctrlKey) modifiers.push('control');
-          if (data.altKey) modifiers.push('alt');
-          if (data.shiftKey) modifiers.push('shift');
-          if (data.metaKey) modifiers.push(process.platform === 'darwin' ? 'command' : 'meta');
-          
-          // 键名映射
-          const keyMap = {
-            'c': 'c',
-            'v': 'v',
-            'x': 'x',
-            'z': 'z',
-            'y': 'y',
-            'a': 'a',
-            's': 's',
-            'tab': 'tab',
-            'esc': 'escape',
-            'l': 'l',
-            'd': 'd',
-            'r': 'r',
-            'space': 'space'
-          };
-          
-          const robotKey = keyMap[data.key.toLowerCase()] || data.key.toLowerCase();
-          robot.keyTap(robotKey, modifiers);
-          console.log(`[远程控制] 执行快捷键: ${modifiers.join('+')}+${robotKey}`);
-        }
-        break;
-
-      case 'functionkey':
-        // 虚拟键盘功能键
-        if (data.key) {
-          const fKeyMap = {
-            'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4',
-            'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8',
-            'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12'
-          };
-          
-          const robotKey = fKeyMap[data.key] || data.key.toLowerCase();
-          robot.keyTap(robotKey);
-          console.log(`[远程控制] 执行功能键: ${robotKey}`);
-        }
-        break;
-
-      default:
-        console.warn('[远程控制] 未知命令类型:', data.type);
+    // 输出调试信息（减少频率）
+    if (data.type !== 'mousemove' && data.type !== 'mousedrag') {
+      console.log('[远程控制] 执行命令:', {
+        type: data.type,
+        hasVideoResolution: !!(data.videoResolution),
+        hasScreenInfo: !!(data.screenInfo),
+        clientPlatform: data.clientPlatform,
+        serverPlatform: process.platform
+      });
+    } else if (Math.random() < 0.001) {
+      // 偶尔打印鼠标移动信息用于调试
+      console.log('[远程控制] 鼠标移动采样:', {
+        type: data.type,
+        hasCoords: !!(data.x !== undefined && data.y !== undefined),
+        clientPlatform: data.clientPlatform
+      });
     }
+
+    // 将命令发送给 Robot Worker 处理
+    if (robotWorker && robotWorkerReady) {
+      robotWorker.postMessage({
+        type: 'command',
+        data: data
+      });
+    } else {
+      console.warn('[远程控制] Robot Worker 未就绪，跳过命令:', data.type);
+    }
+
   } catch (error) {
     console.error('[远程控制] 操作失败:', error);
   }
@@ -521,9 +415,17 @@ ipcMain.handle('get-display-info', () => {
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // 创建主窗口
   createWindow();
+
+  // 预初始化 Robot Worker（提前准备，避免首次使用时的延迟）
+  try {
+    await initRobotWorker();
+    console.log('[应用初始化] Robot Worker 预初始化完成');
+  } catch (error) {
+    console.warn('[应用初始化] Robot Worker 预初始化失败，将在需要时重试:', error.message);
+  }
 
   // 注册全局快捷键
   globalShortcut.register('CmdOrCtrl+Shift+S', () => {
@@ -553,6 +455,9 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   // 取消注册所有快捷键
   globalShortcut.unregisterAll();
+  
+  // 清理 Robot Worker
+  cleanupRobotWorker();
 });
 
 // 错误处理

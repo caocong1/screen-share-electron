@@ -219,6 +219,15 @@ class ScreenShareApp {
         this.longPressTimer = null;
         this.longPressDelay = 500; // 500ms判定为长按
         
+        // 鼠标移动优化：节流和防抖机制
+        this.mouseMoveOptimizer = {
+          lastSendTime: 0,
+          throttleDelay: 8, // 8ms节流间隔 (约120fps)
+          pendingCommand: null,
+          timer: null,
+          maxPendingTime: 16 // 最大延迟16ms，确保响应性
+        };
+        
         // 禁用选择和拖拽
         this.dom.remoteVideo.style.userSelect = 'none';
         this.dom.remoteVideo.style.webkitUserSelect = 'none';
@@ -1134,41 +1143,89 @@ class ScreenShareApp {
     }
 
     const coords = this.calculateVideoCoordinates(e);
-    if (coords.valid) {
-      // 减少日志频率，只在调试模式下每100次打印一次
+    if (!coords.valid) return;
+
+    // 使用优化的鼠标移动发送方法
+    this.sendOptimizedMouseMove(coords, screenInfo);
+  }
+
+  /**
+   * 优化的鼠标移动发送方法 - 带节流和防抖
+   */
+  sendOptimizedMouseMove(coords, screenInfo) {
+    const now = Date.now();
+    const optimizer = this.mouseMoveOptimizer;
+    
+    // 构建命令对象
+    const command = {
+      type: this.dragState.isDragging ? 'mousedrag' : 'mousemove',
+      x: coords.x, 
+      y: coords.y,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      },
+      screenInfo: screenInfo
+    };
+    
+    // 如果正在拖拽，添加拖拽信息
+    if (this.dragState.isDragging) {
+      command.button = this.dragState.button;
+      command.startX = this.dragState.startX;
+      command.startY = this.dragState.startY;
+    }
+    
+    // 检查是否可以立即发送（节流检查）
+    const timeSinceLastSend = now - optimizer.lastSendTime;
+    if (timeSinceLastSend >= optimizer.throttleDelay) {
+      // 可以立即发送
+      this.doSendMouseMoveCommand(command);
+      optimizer.lastSendTime = now;
+      
+      // 清除待发送的指令
+      if (optimizer.timer) {
+        clearTimeout(optimizer.timer);
+        optimizer.timer = null;
+      }
+      optimizer.pendingCommand = null;
+    } else {
+      // 需要等待，更新待发送指令（只保留最新的）
+      optimizer.pendingCommand = command;
+      
+      // 如果没有定时器，创建一个
+      if (!optimizer.timer) {
+        const remainingDelay = optimizer.throttleDelay - timeSinceLastSend;
+        const actualDelay = Math.min(remainingDelay, optimizer.maxPendingTime);
+        
+        optimizer.timer = setTimeout(() => {
+          if (optimizer.pendingCommand) {
+            this.doSendMouseMoveCommand(optimizer.pendingCommand);
+            optimizer.lastSendTime = Date.now();
+            optimizer.pendingCommand = null;
+          }
+          optimizer.timer = null;
+        }, actualDelay);
+      }
+    }
+  }
+
+  /**
+   * 实际发送鼠标移动指令
+   */
+  doSendMouseMoveCommand(command) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (p2p) {
+      p2p.sendControlCommand(command);
+      
+      // 调试信息（减少日志频率）
       if (this.debugMode && Math.random() < 0.01) {
-        console.log('[鼠标移动] 发送坐标和屏幕信息:', {
-          coords: coords,
-          videoResolution: {
-            width: this.dom.remoteVideo.videoWidth,
-            height: this.dom.remoteVideo.videoHeight
-          },
-          screenInfo: screenInfo,
-          clientPlatform: window.electronAPI.platform
+        console.log('[鼠标移动优化] 发送坐标:', {
+          coords: { x: command.x, y: command.y },
+          type: command.type,
+          timestamp: Date.now()
         });
       }
-      
-      // 基础命令对象
-      const command = {
-        type: this.dragState.isDragging ? 'mousedrag' : 'mousemove',
-        x: coords.x, 
-        y: coords.y,
-        clientPlatform: window.electronAPI.platform,
-        videoResolution: {
-          width: this.dom.remoteVideo.videoWidth,
-          height: this.dom.remoteVideo.videoHeight
-        },
-        screenInfo: screenInfo
-      };
-      
-      // 如果正在拖拽，添加拖拽信息
-      if (this.dragState.isDragging) {
-        command.button = this.dragState.button;
-        command.startX = this.dragState.startX;
-        command.startY = this.dragState.startY;
-      }
-      
-      p2p.sendControlCommand(command);
     }
   }
   

@@ -1,5 +1,6 @@
 // p2p-connection.js - 屏幕共享和远程控制版本
 import { config } from "./config.js";
+import { encodeControlCommand, decodeControlCommand, isBinaryControlCommand } from './control-protocol.js';
 
 /**
  * P2PConnection 类封装了 WebRTC 的连接逻辑，用于屏幕共享和远程控制。
@@ -106,12 +107,24 @@ export class P2PConnection extends EventTarget {
   }
 
   /**
-   * 发送远程控制指令
+   * 发送远程控制指令（优先使用二进制协议）
    * @param {object} command 控制指令对象
    */
   sendControlCommand(command) {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify(command));
+      try {
+        // 优先使用二进制协议
+        const binaryData = encodeControlCommand(command);
+        this.dataChannel.send(binaryData);
+      } catch (error) {
+        // 如果二进制编码失败，回退到JSON格式
+        console.warn('[控制协议] 二进制编码失败，回退到JSON格式:', error);
+        try {
+          this.dataChannel.send(JSON.stringify(command));
+        } catch (jsonError) {
+          console.error('[控制协议] JSON编码也失败:', jsonError);
+        }
+      }
     } else {
       console.warn('数据通道未打开，无法发送控制指令');
     }
@@ -191,10 +204,23 @@ export class P2PConnection extends EventTarget {
 
     this.dataChannel.onmessage = event => {
       try {
-        const command = JSON.parse(event.data);
+        let command;
+        
+        // 检测是否为二进制协议格式
+        if (isBinaryControlCommand(event.data)) {
+          // 解码二进制格式
+          const buffer = event.data instanceof ArrayBuffer ? 
+            new Uint8Array(event.data) : 
+            event.data;
+          command = decodeControlCommand(buffer);
+        } else {
+          // 解析JSON格式（向后兼容）
+          command = JSON.parse(event.data);
+        }
+        
         this.dispatchEvent(new CustomEvent('control', { detail: command }));
       } catch (error) {
-        console.error('解析控制指令失败:', error);
+        console.error('[控制协议] 解析控制指令失败:', error);
       }
     };
   }
