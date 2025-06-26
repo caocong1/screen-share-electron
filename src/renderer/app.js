@@ -120,6 +120,8 @@ class ScreenShareApp {
       controlStatus: document.getElementById('controlStatus'),
       globalKeyboardStatus: document.getElementById('globalKeyboardStatus'),
       dragStatus: document.getElementById('dragStatus'),
+      scrollStatus: document.getElementById('scrollStatus'),
+      inputDevice: document.getElementById('inputDevice'),
       remoteInfo: document.getElementById('remoteInfo'),
       // Virtual keyboard elements
       virtualKeyboard: document.getElementById('virtualKeyboard'),
@@ -1228,6 +1230,226 @@ class ScreenShareApp {
       }
     }
   }
+
+  /**
+   * 优化的滚轮发送方法 - 支持触摸板手势和滚轮优化
+   */
+  sendOptimizedScroll(e, coords, screenInfo) {
+    if (!this.scrollOptimizer) {
+      this.scrollOptimizer = {
+        lastSendTime: 0,
+        throttleDelay: 16, // 16ms节流间隔 (约60fps)
+        pendingCommand: null,
+        timer: null,
+        maxPendingTime: 32, // 最大延迟32ms
+        accumulated: { x: 0, y: 0 }, // 累积滚动量
+        resetTimer: null,
+        resetDelay: 100 // 100ms后重置累积量
+      };
+    }
+
+    const optimizer = this.scrollOptimizer;
+    const now = Date.now();
+
+    // 检测滚轮模式和触摸板手势
+    const deltaMode = e.deltaMode || 0; // 0: pixel, 1: line, 2: page
+    const isTrackpad = this.detectTrackpadGesture(e);
+    
+    // 滚动量处理 - 根据不同输入设备调整
+    let deltaX = e.deltaX;
+    let deltaY = e.deltaY;
+    
+    // 触摸板通常有更精细的控制，需要不同的处理
+    if (isTrackpad) {
+      // 触摸板的滚动量通常较小，需要放大
+      deltaX *= 2;
+      deltaY *= 2;
+    } else {
+      // 鼠标滚轮的处理
+      if (deltaMode === 1) { // 行滚动模式
+        deltaX *= 20; // 每行约20像素
+        deltaY *= 20;
+      } else if (deltaMode === 2) { // 页面滚动模式
+        deltaX *= 400; // 每页约400像素
+        deltaY *= 400;
+      }
+    }
+
+    // 累积滚动量（用于减少发送频率）
+    optimizer.accumulated.x += deltaX;
+    optimizer.accumulated.y += deltaY;
+
+    // 构建滚动命令
+    const command = {
+      type: 'scroll',
+      x: -Math.round(optimizer.accumulated.x), // 注意方向
+      y: -Math.round(optimizer.accumulated.y),
+      deltaMode: deltaMode,
+      isTrackpad: isTrackpad,
+      coords: coords,
+      ctrlKey: e.ctrlKey, // 支持Ctrl+滚轮缩放
+      shiftKey: e.shiftKey, // 支持Shift+滚轮横向滚动
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      clientPlatform: window.electronAPI.platform,
+      videoResolution: {
+        width: this.dom.remoteVideo.videoWidth,
+        height: this.dom.remoteVideo.videoHeight
+      },
+      screenInfo: screenInfo
+    };
+
+    // 检查是否可以立即发送（节流检查）
+    const timeSinceLastSend = now - optimizer.lastSendTime;
+    if (timeSinceLastSend >= optimizer.throttleDelay) {
+      // 可以立即发送
+      this.doSendScrollCommand(command);
+      optimizer.lastSendTime = now;
+      optimizer.accumulated = { x: 0, y: 0 }; // 重置累积量
+      
+      // 清除待发送的指令
+      if (optimizer.timer) {
+        clearTimeout(optimizer.timer);
+        optimizer.timer = null;
+      }
+      optimizer.pendingCommand = null;
+    } else {
+      // 需要等待，更新待发送指令
+      optimizer.pendingCommand = command;
+      
+      // 如果没有定时器，创建一个
+      if (!optimizer.timer) {
+        const remainingDelay = optimizer.throttleDelay - timeSinceLastSend;
+        const actualDelay = Math.min(remainingDelay, optimizer.maxPendingTime);
+        
+        optimizer.timer = setTimeout(() => {
+          if (optimizer.pendingCommand) {
+            this.doSendScrollCommand(optimizer.pendingCommand);
+            optimizer.lastSendTime = Date.now();
+            optimizer.accumulated = { x: 0, y: 0 }; // 重置累积量
+            optimizer.pendingCommand = null;
+          }
+          optimizer.timer = null;
+        }, actualDelay);
+      }
+    }
+
+    // 设置累积量重置定时器
+    if (optimizer.resetTimer) {
+      clearTimeout(optimizer.resetTimer);
+    }
+    optimizer.resetTimer = setTimeout(() => {
+      if (!optimizer.timer) { // 只在没有待发送命令时重置
+        optimizer.accumulated = { x: 0, y: 0 };
+        // 重置调试信息显示
+        if (this.debugMode && this.dom.scrollStatus) {
+          this.dom.scrollStatus.textContent = '静止 (0, 0)';
+        }
+      }
+    }, optimizer.resetDelay);
+
+    // 更新调试信息
+    if (this.debugMode) {
+      // 更新滚轮状态显示
+      if (this.dom.scrollStatus) {
+        const scrollInfo = `${Math.abs(optimizer.accumulated.x) > 0 || Math.abs(optimizer.accumulated.y) > 0 ? '滚动中' : '静止'} (${Math.round(optimizer.accumulated.x)}, ${Math.round(optimizer.accumulated.y)})`;
+        this.dom.scrollStatus.textContent = scrollInfo;
+      }
+      
+      // 更新输入设备显示
+      if (this.dom.inputDevice) {
+        const deviceInfo = isTrackpad ? '触摸板' : '鼠标滚轮';
+        const modeInfo = deltaMode === 0 ? '像素' : deltaMode === 1 ? '行' : '页';
+        this.dom.inputDevice.textContent = `${deviceInfo} (${modeInfo}模式)`;
+      }
+      
+      // 详细日志（降低频率）
+      if (Math.random() < 0.1) {
+        console.log('[滚轮优化] 事件信息:', {
+          deltaX: e.deltaX,
+          deltaY: e.deltaY,
+          deltaMode: deltaMode,
+          isTrackpad: isTrackpad,
+          accumulated: optimizer.accumulated,
+          coords: coords,
+          modifiers: {
+            ctrl: e.ctrlKey,
+            shift: e.shiftKey,
+            alt: e.altKey,
+            meta: e.metaKey
+          }
+        });
+      }
+    }
+  }
+
+  /**
+   * 检测触摸板手势
+   */
+  detectTrackpadGesture(e) {
+    // 触摸板特征检测
+    // 1. 触摸板通常有更精细的deltaY值（小数）
+    // 2. 触摸板支持deltaX（水平滚动）
+    // 3. 触摸板的deltaMode通常是0（像素模式）
+    // 4. 触摸板的滚动值通常较小且连续
+    // 5. 触摸板支持缩放手势（Ctrl+滚轮）
+    
+    const hasDecimalDelta = (e.deltaY % 1 !== 0) || (e.deltaX % 1 !== 0);
+    const hasHorizontalScroll = Math.abs(e.deltaX) > 0;
+    const isPixelMode = e.deltaMode === 0;
+    const hasSmallDelta = Math.abs(e.deltaY) < 100 && Math.abs(e.deltaX) < 100;
+    const hasDiagonalScroll = Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) > 0;
+    const isPinchZoom = e.ctrlKey && (Math.abs(e.deltaY) > 0);
+    
+    // 检测是否为缩放手势
+    const isZoomGesture = isPinchZoom && hasSmallDelta && isPixelMode;
+    
+    // 触摸板通常满足这些条件中的多个
+    const trackpadScore = 
+      (hasDecimalDelta ? 2 : 0) +
+      (hasHorizontalScroll ? 1 : 0) +
+      (isPixelMode ? 1 : 0) +
+      (hasSmallDelta ? 1 : 0) +
+      (hasDiagonalScroll ? 1 : 0) +
+      (isZoomGesture ? 3 : 0); // 缩放手势强烈表明是触摸板
+    
+    // 存储检测到的手势类型以供调试
+    if (this.debugMode) {
+      const gestureType = isZoomGesture ? '缩放' : 
+                         hasDiagonalScroll ? '对角滚动' : 
+                         hasHorizontalScroll ? '水平滚动' : 
+                         '垂直滚动';
+      
+      if (this.dom.inputDevice && Math.random() < 0.1) {
+        const deviceInfo = trackpadScore >= 2 ? '触摸板' : '鼠标滚轮';
+        const modeInfo = e.deltaMode === 0 ? '像素' : e.deltaMode === 1 ? '行' : '页';
+        this.dom.inputDevice.textContent = `${deviceInfo} - ${gestureType} (${modeInfo}模式)`;
+      }
+    }
+    
+    return trackpadScore >= 2;
+  }
+
+  /**
+   * 实际发送滚轮命令
+   */
+  doSendScrollCommand(command) {
+    const p2p = this.p2pConnections.values().next().value;
+    if (p2p) {
+      p2p.sendControlCommand(command);
+      
+      // 调试信息（减少日志频率）
+      if (this.debugMode && Math.random() < 0.05) {
+        console.log('[滚轮发送] 命令:', {
+          scroll: { x: command.x, y: command.y },
+          isTrackpad: command.isTrackpad,
+          deltaMode: command.deltaMode,
+          coords: command.coords,
+          timestamp: Date.now()
+        });
+      }
+    }
+  }
   
   handleRemoteMouseDown(e) {
     e.preventDefault();
@@ -1460,16 +1682,22 @@ class ScreenShareApp {
     const p2p = this.p2pConnections.values().next().value;
     if (!p2p) return;
 
-    console.log('[鼠标滚轮] 发送滚动:', { deltaX: e.deltaX, deltaY: e.deltaY });
-    
-    const command = {
-      type: 'scroll',
-      x: -e.deltaX,
-      y: -e.deltaY,
-      clientPlatform: window.electronAPI.platform
-    };
-    
-    p2p.sendControlCommand(command);
+    // 检查屏幕信息是否可用
+    const screenInfo = this.getRemoteScreenInfo();
+    if (!screenInfo) {
+      console.warn('[滚轮] 屏幕信息不可用，跳过控制命令');
+      return;
+    }
+
+    // 获取滚轮事件发生的位置
+    const coords = this.calculateVideoCoordinates(e);
+    if (!coords.valid) {
+      console.warn('[滚轮] 坐标无效，跳过控制命令');
+      return;
+    }
+
+    // 使用优化的滚轮发送方法
+    this.sendOptimizedScroll(e, coords, screenInfo);
   }
 
   handleRemoteKeyDown(e) {
