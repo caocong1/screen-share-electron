@@ -361,6 +361,7 @@ class ScreenShareApp {
 
       this.dom.screenSources.innerHTML = '<p>正在获取屏幕源...</p>';
       const sources = await window.electronAPI.getDesktopSources();
+      console.log('[LOAD-SOURCES] 源:', sources);
       
       console.log('[LOAD-SOURCES] 获取到的屏幕源:', sources.length, '个');
       sources.forEach((source, index) => {
@@ -395,22 +396,82 @@ class ScreenShareApp {
           this.selectedSourceEl = el;
           this.selectedSourceId = source.id;
           this.selectedScreenInfo = source.screenInfo; // 保存屏幕信息
+          this.selectedSourceName = source.name; // 保存源名称
+          
+          // 判断源类型并记录
+          const isWindow = source.id.includes('window:') || (source.screenInfo?.bounds.x > 0 || source.screenInfo?.bounds.y > 0);
           
           console.log('[SOURCE-SELECT] 选择了源:', {
             id: source.id,
             name: source.name,
-            screenInfo: source.screenInfo
+            type: isWindow ? '窗口' : '屏幕',
+            screenInfo: source.screenInfo,
+            windowInfo: source.windowInfo,
+            isWindow: isWindow
           });
+          
+          // 如果是窗口源，尝试获取更详细的窗口信息
+          if (isWindow && window.electronAPI.getWindowDetails) {
+            window.electronAPI.getWindowDetails(source.id).then(windowDetails => {
+              if (windowDetails && windowDetails.windowBounds) {
+                console.log('[WINDOW-DETAILS] 获取到窗口详细信息:', windowDetails);
+                
+                // 更新屏幕信息以包含实际的窗口位置
+                this.selectedScreenInfo = {
+                  ...source.screenInfo,
+                  windowBounds: windowDetails.windowBounds,
+                  relativePosition: windowDetails.relativePosition,
+                  actualDisplay: windowDetails.displayInfo,
+                  isActualWindow: true
+                };
+                
+                console.log('[WINDOW-DETAILS] 更新了屏幕信息:', this.selectedScreenInfo);
+              }
+            }).catch(error => {
+              console.warn('[WINDOW-DETAILS] 无法获取窗口详细信息:', error);
+            });
+          }
           
           this.dom.startScreenShare.disabled = false;
         };
         
-        // 构建显示名称，包含屏幕信息
+        // 构建显示名称，包含屏幕信息和类型标识
         let displayName = source.name;
         if (source.screenInfo) {
           const { bounds, isPrimary } = source.screenInfo;
-          const primaryText = isPrimary ? ' (主屏幕)' : '';
-          displayName = `${source.name}${primaryText} - ${bounds.width}×${bounds.height}`;
+          const isWindow = source.id.includes('window:');
+          
+          if (isWindow) {
+            // 窗口源
+            let windowTypeText = '🪟 窗口';
+            let positionText = '';
+            let sizeText = `${bounds.width}×${bounds.height}`;
+            
+            // 检查是否有实际窗口位置信息
+            if (source.screenInfo.actualWindowBounds) {
+              const actualBounds = source.screenInfo.actualWindowBounds;
+              windowTypeText = '🎯 窗口 (实际位置)';
+              positionText = ` @(${actualBounds.x},${actualBounds.y})`;
+              sizeText = `${actualBounds.width}×${actualBounds.height}`;
+              
+              // 显示所在显示器信息
+              const displayText = source.screenInfo.displayId ? ` [显示器${source.screenInfo.displayId}]` : '';
+              displayName = `${windowTypeText}: ${source.name}${displayText} - ${sizeText}${positionText}`;
+            } else if (source.screenInfo.estimated) {
+              windowTypeText = '📍 窗口 (估算位置)';
+              positionText = ` @(${bounds.x},${bounds.y})`;
+              displayName = `${windowTypeText}: ${source.name} - ${sizeText}${positionText}`;
+            } else {
+              positionText = bounds.x !== 0 || bounds.y !== 0 ? ` @(${bounds.x},${bounds.y})` : '';
+              displayName = `${windowTypeText}: ${source.name} - ${sizeText}${positionText}`;
+            }
+          } else {
+            // 屏幕源
+            const typeText = '🖥️ 屏幕';
+            const primaryText = isPrimary ? ' (主屏幕)' : '';
+            const positionText = bounds.x !== 0 || bounds.y !== 0 ? ` @(${bounds.x},${bounds.y})` : '';
+            displayName = `${typeText}: ${source.name}${primaryText} - ${bounds.width}×${bounds.height}${positionText}`;
+          }
         }
 
         el.innerHTML = `
@@ -971,8 +1032,11 @@ class ScreenShareApp {
         // 显示当前选中屏幕的信息
         if (this.selectedScreenInfo) {
           console.log('当前选中屏幕信息:', this.selectedScreenInfo);
+          const isWindow = this.isWindowShare(this.selectedScreenInfo);
           if (this.dom.remoteInfo) {
-            const info = `缩放:${this.selectedScreenInfo.scaleFactor}x 分辨率:${this.selectedScreenInfo.bounds.width}×${this.selectedScreenInfo.bounds.height}`;
+            const typeText = isWindow ? '窗口共享' : '屏幕共享';
+            const positionText = isWindow ? ` 位置:(${this.selectedScreenInfo.bounds.x},${this.selectedScreenInfo.bounds.y})` : '';
+            const info = `${typeText} 缩放:${this.selectedScreenInfo.scaleFactor}x 分辨率:${this.selectedScreenInfo.bounds.width}×${this.selectedScreenInfo.bounds.height}${positionText}`;
             this.dom.remoteInfo.textContent = info;
           }
         }
@@ -1033,7 +1097,7 @@ class ScreenShareApp {
     console.log('=== 调试状态报告结束 ===');
   }
 
-  // 改进的坐标计算函数
+  // 改进的坐标计算函数 - 支持窗口共享的坐标转换
   calculateVideoCoordinates(e) {
     const video = this.dom.remoteVideo;
     
@@ -1087,11 +1151,83 @@ class ScreenShareApp {
     const scaleX = video.videoWidth / videoDisplayWidth;
     const scaleY = video.videoHeight / videoDisplayHeight;
     
-    const x = relativeX * scaleX;
-    const y = relativeY * scaleY;
+    let x = relativeX * scaleX;
+    let y = relativeY * scaleY;
 
     const valid = relativeX >= 0 && relativeX <= videoDisplayWidth && 
                   relativeY >= 0 && relativeY <= videoDisplayHeight;
+
+    // 新增：处理窗口共享的坐标转换
+    const screenInfo = this.getRemoteScreenInfo();
+    if (screenInfo && screenInfo.bounds) {
+      // 检查是否为窗口共享（非全屏幕）
+      const isWindowShare = this.isWindowShare(screenInfo);
+      
+      if (isWindowShare) {
+        let offsetX = 0, offsetY = 0;
+        
+        // 优先使用实际窗口边界信息
+        if (screenInfo.actualWindowBounds) {
+          offsetX = screenInfo.actualWindowBounds.x;
+          offsetY = screenInfo.actualWindowBounds.y;
+          
+          if (this.debugMode) {
+            console.log('[坐标转换] 使用实际窗口边界进行坐标转换:', {
+              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
+              实际窗口位置: { x: screenInfo.actualWindowBounds.x, y: screenInfo.actualWindowBounds.y },
+              窗口尺寸: { width: screenInfo.actualWindowBounds.width, height: screenInfo.actualWindowBounds.height },
+              相对位置: screenInfo.relativePosition,
+              所在显示器: screenInfo.displayId
+            });
+          }
+        } else if (screenInfo.windowBounds) {
+          offsetX = screenInfo.windowBounds.x;
+          offsetY = screenInfo.windowBounds.y;
+          
+          if (this.debugMode) {
+            console.log('[坐标转换] 使用窗口边界进行坐标转换:', {
+              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
+              窗口位置: { x: screenInfo.windowBounds.x, y: screenInfo.windowBounds.y },
+              窗口尺寸: { width: screenInfo.windowBounds.width, height: screenInfo.windowBounds.height },
+              所在显示器: screenInfo.actualDisplay ? screenInfo.actualDisplay.bounds : '未知'
+            });
+          }
+        } else {
+          // 回退到使用屏幕边界信息
+          offsetX = screenInfo.bounds.x;
+          offsetY = screenInfo.bounds.y;
+          
+          if (this.debugMode) {
+            console.log('[坐标转换] 使用屏幕边界进行坐标转换:', {
+              原始坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
+              屏幕偏移: { x: screenInfo.bounds.x, y: screenInfo.bounds.y },
+              屏幕信息: screenInfo.bounds
+            });
+          }
+        }
+        
+        // 应用坐标偏移
+        x += offsetX;
+        y += offsetY;
+        
+        if (this.debugMode) {
+          console.log('[坐标转换] 窗口共享坐标转换完成:', {
+            偏移前坐标: { x: relativeX * scaleX, y: relativeY * scaleY },
+            应用偏移: { x: offsetX, y: offsetY },
+            最终坐标: { x, y },
+            窗口类型: screenInfo.windowBounds ? '实际窗口' : '屏幕边界'
+          });
+        }
+      } else {
+        if (this.debugMode) {
+          console.log('[坐标转换] 全屏幕共享，无需坐标转换');
+        }
+      }
+    } else {
+      if (this.debugMode) {
+        console.warn('[坐标转换] 缺少屏幕信息，无法进行坐标转换');
+      }
+    }
 
     if (this.debugMode) {
       console.log('[坐标计算] 结果:', {
@@ -1103,9 +1239,12 @@ class ScreenShareApp {
         relativeY,
         scaleX,
         scaleY,
-        finalX: x,
-        finalY: y,
-        valid
+        原始X: relativeX * scaleX,
+        原始Y: relativeY * scaleY,
+        最终X: x,
+        最终Y: y,
+        valid,
+        screenInfo: screenInfo?.bounds
       });
     }
 
@@ -2191,6 +2330,70 @@ class ScreenShareApp {
         this.dom.fullscreenToggleKeyboard.classList.remove('control-enabled');
       }
     }
+  }
+
+  // 判断是否为窗口共享（而非全屏幕共享）
+  isWindowShare(screenInfo) {
+    if (!screenInfo || !screenInfo.bounds) {
+      return false;
+    }
+    
+    // 方法1：检查是否有实际窗口边界信息
+    if (screenInfo.actualWindowBounds) {
+      return true;
+    }
+    
+    // 方法2：检查是否明确标记为实际窗口
+    if (screenInfo.isActualWindow) {
+      return true;
+    }
+    
+    // 方法3：检查是否有窗口边界信息
+    if (screenInfo.windowBounds) {
+      return true;
+    }
+    
+    // 方法4：检查源ID是否包含窗口标识
+    if (this.selectedSourceId && this.selectedSourceId.includes('window:')) {
+      return true;
+    }
+    
+    // 方法5：检查是否有窗口信息标记且具有实际位置
+    if (screenInfo.windowInfo && screenInfo.windowInfo.type === 'window') {
+      return true;
+    }
+    
+    // 方法6：检查是否有窗口位置偏移且不是显示器边界
+    // 对于多显示器环境，需要更智能的判断
+    if (screenInfo.bounds.x !== 0 || screenInfo.bounds.y !== 0) {
+      // 如果有实际显示器信息，检查窗口是否与显示器边界重合
+      if (screenInfo.actualDisplay) {
+        const displayBounds = screenInfo.actualDisplay.bounds;
+        // 检查窗口的位置和大小是否与显示器完全匹配
+        if (screenInfo.bounds.x === displayBounds.x && 
+            screenInfo.bounds.y === displayBounds.y &&
+            screenInfo.bounds.width === displayBounds.width && 
+            screenInfo.bounds.height === displayBounds.height) {
+          // 完全匹配显示器边界，可能是全屏应用
+          return false;
+        }
+      }
+      return true;
+    }
+    
+    // 方法7：检查尺寸是否明显小于常见屏幕尺寸
+    const { width, height } = screenInfo.bounds;
+    if (width < 1024 || height < 720) {
+      return true;
+    }
+    
+    // 方法8：检查是否为估算值且源ID表明是窗口
+    if (screenInfo.estimated && this.selectedSourceId && this.selectedSourceId.includes('window:')) {
+      return true;
+    }
+    
+    // 默认认为是全屏幕共享
+    return false;
   }
 
   // 获取远程屏幕信息的辅助方法

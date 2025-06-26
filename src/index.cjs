@@ -57,11 +57,15 @@ ipcMain.handle('get-desktop-sources', async () => {
       types: ['screen', 'window'],
       thumbnailSize: { width: 200, height: 150 }
     });
+    console.log('[DESKTOP-SOURCES] 获取到的源:', sources);
     
     // 获取所有屏幕的详细信息
     const { screen } = require('electron');
     const allDisplays = screen.getAllDisplays();
     const primaryDisplay = screen.getPrimaryDisplay();
+    
+    // 获取所有窗口的位置信息（仅在 macOS 上）
+    const allWindowsInfo = await getAllWindowsInfo();
     
     console.log('[DESKTOP-SOURCES] 获取到的源数量:', sources.length);
     console.log('[DESKTOP-SOURCES] 可用显示器:', allDisplays.map(d => ({
@@ -73,57 +77,207 @@ ipcMain.handle('get-desktop-sources', async () => {
     
     return sources.map((source, index) => {
       let screenInfo = null;
+      let windowInfo = null;
       
       console.log(`[DESKTOP-SOURCES] 处理源 ${index}:`, {
         id: source.id,
         name: source.name,
-        appIcon: !!source.appIcon
+        appIcon: !!source.appIcon,
+        display_id: source.display_id
       });
       
-      // 优先尝试为屏幕源匹配对应的显示器
+      // 处理屏幕源
       if (source.id.startsWith('screen:')) {
-        // 提取屏幕ID，支持多种格式
-        const screenMatches = [
-          source.id.match(/screen:(\d+)/),           // "screen:0" 格式
-          source.id.match(/screen:(\d+):(\d+)/),     // "screen:0:0" 格式
-          source.id.match(/(\d+)$/)                  // 以数字结尾的格式
-        ];
+        // 优先使用 display_id 匹配显示器
+        if (source.display_id) {
+          const display = allDisplays.find(d => d.id.toString() === source.display_id.toString());
+          if (display) {
+            screenInfo = {
+              bounds: display.bounds,
+              workArea: display.workArea,
+              scaleFactor: display.scaleFactor,
+              isPrimary: display.id === primaryDisplay.id,
+              displayId: display.id
+            };
+            console.log(`[DESKTOP-SOURCES] 屏幕源 ${source.id} 通过display_id匹配到显示器:`, screenInfo);
+          }
+        }
         
-        for (const match of screenMatches) {
-          if (match) {
-            const screenIndex = parseInt(match[1]);
-            const display = allDisplays[screenIndex];
-            if (display) {
-              screenInfo = {
-                bounds: display.bounds,
-                workArea: display.workArea,
-                scaleFactor: display.scaleFactor,
-                isPrimary: display.id === primaryDisplay.id
-              };
-              console.log(`[DESKTOP-SOURCES] 屏幕源 ${source.id} 匹配到显示器 ${screenIndex}:`, screenInfo);
-              break;
+        // 如果 display_id 匹配失败，使用传统方法
+        if (!screenInfo) {
+          const screenMatches = [
+            source.id.match(/screen:(\d+)/),           // "screen:0" 格式
+            source.id.match(/screen:(\d+):(\d+)/),     // "screen:0:0" 格式
+            source.id.match(/(\d+)$/)                  // 以数字结尾的格式
+          ];
+          
+          for (const match of screenMatches) {
+            if (match) {
+              const screenIndex = parseInt(match[1]);
+              const display = allDisplays[screenIndex];
+              if (display) {
+                screenInfo = {
+                  bounds: display.bounds,
+                  workArea: display.workArea,
+                  scaleFactor: display.scaleFactor,
+                  isPrimary: display.id === primaryDisplay.id,
+                  displayId: display.id
+                };
+                console.log(`[DESKTOP-SOURCES] 屏幕源 ${source.id} 通过索引匹配到显示器 ${screenIndex}:`, screenInfo);
+                break;
+              }
             }
           }
         }
       }
+      // 处理窗口源
+      else if (source.id.startsWith('window:')) {
+        // 首先尝试通过窗口名称匹配实际窗口位置
+        const matchedWindow = findBestWindowMatch(source.name, allWindowsInfo);
+        
+        if (matchedWindow) {
+          // 找到匹配的窗口，使用实际位置信息
+          const windowX = matchedWindow.x;
+          const windowY = matchedWindow.y;
+          const windowWidth = matchedWindow.width;
+          const windowHeight = matchedWindow.height;
+          
+          // 查找包含此窗口的显示器
+          const containingDisplay = allDisplays.find(display => {
+            const bounds = display.bounds;
+            return windowX >= bounds.x && 
+                   windowX < bounds.x + bounds.width &&
+                   windowY >= bounds.y && 
+                   windowY < bounds.y + bounds.height;
+          });
+          
+          if (containingDisplay) {
+            screenInfo = {
+              bounds: {
+                x: windowX,
+                y: windowY,
+                width: windowWidth,
+                height: windowHeight
+              },
+              workArea: containingDisplay.workArea,
+              scaleFactor: containingDisplay.scaleFactor,
+              isPrimary: containingDisplay.id === primaryDisplay.id,
+              displayId: containingDisplay.id,
+              actualWindowBounds: {
+                x: windowX,
+                y: windowY,
+                width: windowWidth,
+                height: windowHeight
+              },
+              relativePosition: {
+                x: windowX - containingDisplay.bounds.x,
+                y: windowY - containingDisplay.bounds.y
+              }
+            };
+            
+            windowInfo = {
+              type: 'window',
+              appName: matchedWindow.appName,
+              windowName: matchedWindow.windowName,
+              actualPosition: true,
+              thumbnailSize: {
+                width: source.thumbnail ? source.thumbnail.getSize().width : null,
+                height: source.thumbnail ? source.thumbnail.getSize().height : null
+              }
+            };
+            
+            console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 找到实际位置:`, {
+              windowName: source.name,
+              actualBounds: screenInfo.bounds,
+              displayId: containingDisplay.id,
+              displayBounds: containingDisplay.bounds
+            });
+          } else {
+            // 窗口位置超出所有显示器范围，可能是窗口在屏幕外
+            console.warn(`[DESKTOP-SOURCES] 窗口 ${source.name} 位置超出显示器范围:`, {
+              windowPos: { x: windowX, y: windowY },
+              displays: allDisplays.map(d => d.bounds)
+            });
+          }
+        }
+        
+        // 如果没有找到匹配的窗口，尝试通过 display_id 匹配显示器
+        if (!screenInfo && source.display_id) {
+          const display = allDisplays.find(d => d.id.toString() === source.display_id.toString());
+          if (display) {
+            screenInfo = {
+              bounds: display.bounds,
+              workArea: display.workArea,
+              scaleFactor: display.scaleFactor,
+              isPrimary: display.id === primaryDisplay.id,
+              displayId: display.id
+            };
+            
+            windowInfo = {
+              type: 'window',
+              appName: source.name,
+              thumbnailSize: {
+                width: source.thumbnail ? source.thumbnail.getSize().width : null,
+                height: source.thumbnail ? source.thumbnail.getSize().height : null
+              }
+            };
+            
+            console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 通过display_id匹配到显示器:`, screenInfo);
+          }
+        }
+        
+        // 如果仍然无法确定窗口位置，使用主显示器作为估算
+        if (!screenInfo) {
+          screenInfo = {
+            bounds: primaryDisplay.bounds,
+            workArea: primaryDisplay.workArea,
+            scaleFactor: primaryDisplay.scaleFactor,
+            isPrimary: true,
+            displayId: primaryDisplay.id,
+            estimated: true // 标记为估算值
+          };
+          
+          windowInfo = {
+            type: 'window',
+            appName: source.name,
+            thumbnailSize: {
+              width: source.thumbnail ? source.thumbnail.getSize().width : null,
+              height: source.thumbnail ? source.thumbnail.getSize().height : null
+            },
+            estimated: true
+          };
+          
+          console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 无法确定显示器，使用主显示器作为估算:`, screenInfo);
+        }
+      }
       
-      // 如果没有匹配到具体的屏幕，使用主显示器信息作为默认值
+      // 如果仍然没有匹配到具体的屏幕，使用主显示器信息作为默认值
       if (!screenInfo) {
         screenInfo = {
           bounds: primaryDisplay.bounds,
           workArea: primaryDisplay.workArea,
           scaleFactor: primaryDisplay.scaleFactor,
-          isPrimary: true
+          isPrimary: true,
+          displayId: primaryDisplay.id,
+          fallback: true
         };
-        console.log(`[DESKTOP-SOURCES] 源 ${source.id} 使用主显示器信息:`, screenInfo);
+        console.log(`[DESKTOP-SOURCES] 源 ${source.id} 使用主显示器信息作为后备:`, screenInfo);
       }
       
-      return {
+      const result = {
         id: source.id,
         name: source.name,
         thumbnail: source.thumbnail.toDataURL(),
-        screenInfo: screenInfo
+        screenInfo: screenInfo,
+        display_id: source.display_id
       };
+      
+      // 如果是窗口源，添加窗口信息
+      if (windowInfo) {
+        result.windowInfo = windowInfo;
+      }
+      
+      return result;
     });
   } catch (error) {
     console.error('获取桌面源失败:', error);
@@ -411,6 +565,202 @@ ipcMain.handle('get-display-info', () => {
       scaleFactor: primaryDisplay.scaleFactor
     }
   };
+});
+
+// 获取所有窗口的位置信息（macOS 专用）
+async function getAllWindowsInfo() {
+  if (process.platform !== 'darwin') {
+    return {};
+  }
+
+  const { exec } = require('child_process');
+  const util = require('util');
+  const execPromise = util.promisify(exec);
+  
+  try {
+    // 使用 AppleScript 获取所有可见窗口的信息
+    const { stdout } = await execPromise(`
+      osascript -e '
+        tell application "System Events"
+          set windowList to {}
+          repeat with proc in application processes
+            try
+              if visible of proc is true then
+                set procName to name of proc
+                repeat with win in windows of proc
+                  try
+                    set windowName to name of win
+                    set windowPosition to position of win
+                    set windowSize to size of win
+                    set windowInfo to procName & "::" & windowName & "::" & (item 1 of windowPosition) & "::" & (item 2 of windowPosition) & "::" & (item 1 of windowSize) & "::" & (item 2 of windowSize)
+                    set end of windowList to windowInfo
+                  end try
+                end repeat
+              end if
+            end try
+          end repeat
+          
+          set AppleScript'"'"'s text item delimiters to "|||"
+          set windowListString to windowList as string
+          set AppleScript'"'"'s text item delimiters to ""
+          return windowListString
+        end tell
+      '
+    `);
+    
+    const windowsInfo = {};
+    const windowEntries = stdout.trim().split('|||');
+    
+    for (const entry of windowEntries) {
+      if (entry.trim() === '') continue;
+      
+      const [appName, windowName, x, y, width, height] = entry.split('::');
+      if (appName && windowName && x && y && width && height) {
+        const key = `${appName}:${windowName}`;
+        windowsInfo[key] = {
+          appName: appName,
+          windowName: windowName,
+          x: parseInt(x),
+          y: parseInt(y),
+          width: parseInt(width),
+          height: parseInt(height)
+        };
+      }
+    }
+    
+    console.log(`[ALL-WINDOWS] 获取到 ${Object.keys(windowsInfo).length} 个窗口信息`);
+    return windowsInfo;
+    
+  } catch (error) {
+    console.log('[ALL-WINDOWS] 无法获取窗口列表:', error.message);
+    return {};
+  }
+}
+
+// 根据窗口名称查找最佳匹配的窗口位置
+function findBestWindowMatch(sourceName, allWindowsInfo) {
+  const sourceNameLower = sourceName.toLowerCase();
+  
+  // 精确匹配窗口名称
+  for (const [key, info] of Object.entries(allWindowsInfo)) {
+    if (info.windowName.toLowerCase() === sourceNameLower) {
+      console.log(`[WINDOW-MATCH] 精确匹配: ${sourceName} -> ${key}`);
+      return info;
+    }
+  }
+  
+  // 部分匹配窗口名称
+  for (const [key, info] of Object.entries(allWindowsInfo)) {
+    if (info.windowName.toLowerCase().includes(sourceNameLower) || 
+        sourceNameLower.includes(info.windowName.toLowerCase())) {
+      console.log(`[WINDOW-MATCH] 部分匹配: ${sourceName} -> ${key}`);
+      return info;
+    }
+  }
+  
+  // 匹配应用名称
+  for (const [key, info] of Object.entries(allWindowsInfo)) {
+    if (info.appName.toLowerCase() === sourceNameLower) {
+      console.log(`[WINDOW-MATCH] 应用名匹配: ${sourceName} -> ${key}`);
+      return info;
+    }
+  }
+  
+  console.log(`[WINDOW-MATCH] 未找到匹配: ${sourceName}`);
+  return null;
+}
+
+// 获取窗口详细信息（包括实际位置和大小）
+ipcMain.handle('get-window-details', async (event, sourceId) => {
+  try {
+    if (!sourceId.startsWith('window:')) {
+      return null;
+    }
+
+    const { screen } = require('electron');
+    const allDisplays = screen.getAllDisplays();
+    
+    // 在 macOS 上，我们可以尝试获取更多窗口信息
+    if (process.platform === 'darwin') {
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+      
+      try {
+        // 使用 osascript 获取前台应用的窗口信息
+        const { stdout } = await execPromise(`
+          osascript -e '
+            tell application "System Events"
+              set frontApp to first application process whose frontmost is true
+              set appName to name of frontApp
+              try
+                set frontWindow to first window of frontApp
+                set windowPosition to position of frontWindow
+                set windowSize to size of frontWindow
+                return appName & "|" & (item 1 of windowPosition) & "|" & (item 2 of windowPosition) & "|" & (item 1 of windowSize) & "|" & (item 2 of windowSize)
+              on error
+                return appName & "|unknown"
+              end try
+            end tell
+          '
+        `);
+        
+        const [appName, x, y, width, height] = stdout.trim().split('|');
+        
+        if (x !== 'unknown' && y !== 'unknown') {
+          // 找到窗口所在的显示器
+          const windowX = parseInt(x);
+          const windowY = parseInt(y);
+          const windowWidth = parseInt(width);
+          const windowHeight = parseInt(height);
+          
+          // 查找包含此窗口的显示器
+          const containingDisplay = allDisplays.find(display => {
+            const bounds = display.bounds;
+            return windowX >= bounds.x && 
+                   windowX < bounds.x + bounds.width &&
+                   windowY >= bounds.y && 
+                   windowY < bounds.y + bounds.height;
+          });
+          
+          if (containingDisplay) {
+            return {
+              appName: appName,
+              windowBounds: {
+                x: windowX,
+                y: windowY,
+                width: windowWidth,
+                height: windowHeight
+              },
+              displayInfo: {
+                id: containingDisplay.id,
+                bounds: containingDisplay.bounds,
+                workArea: containingDisplay.workArea,
+                scaleFactor: containingDisplay.scaleFactor
+              },
+              // 计算窗口在显示器内的相对位置
+              relativePosition: {
+                x: windowX - containingDisplay.bounds.x,
+                y: windowY - containingDisplay.bounds.y
+              }
+            };
+          }
+        }
+      } catch (error) {
+        console.log('[窗口详情] 无法获取窗口位置信息:', error.message);
+      }
+    }
+    
+    // 如果无法获取精确位置，返回基本信息
+    return {
+      platform: process.platform,
+      message: '无法获取精确的窗口位置信息，可能需要额外的权限'
+    };
+    
+  } catch (error) {
+    console.error('获取窗口详情失败:', error);
+    return null;
+  }
 });
 
 // This method will be called when Electron has finished

@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 获取显示信息（用于调试缩放问题）
   getDisplayInfo: () => ipcRenderer.invoke('get-display-info'),
   
+  // 获取窗口详细信息（包括实际位置和大小）
+  getWindowDetails: (sourceId) => ipcRenderer.invoke('get-window-details', sourceId),
+  
   // 平台信息
   platform: process.platform
 });
