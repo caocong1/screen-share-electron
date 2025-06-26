@@ -3,27 +3,12 @@ const path = require('node:path');
 const { v4: uuidv4 } = require('uuid');
 const { Worker } = require('worker_threads');
 
-// RobotJS for global mouse listening
-let robot;
-try {
-  robot = require('robotjs');
-} catch (error) {
-  console.warn('[主进程] RobotJS 不可用:', error.message);
-  robot = null;
-}
-
-// 信令服务器
-let signalServer;
-
 // Robot Worker 管理
 let robotWorker = null;
 let robotWorkerReady = false;
 
-// 全局鼠标监听状态
+// 新增：全局鼠标监听状态（由Worker处理，主进程只跟踪状态）
 let globalMouseListening = false;
-let mouseListenerInterval = null;
-let lastMousePosition = { x: 0, y: 0 };
-let mouseButtonState = { left: false, right: false, middle: false };
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -416,6 +401,13 @@ function initRobotWorker() {
             }
             break;
             
+          case 'global-mouse-move':
+            // 转发全局鼠标移动事件到渲染进程
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('global-mouse-move', message.data);
+            }
+            break;
+            
           case 'error':
             console.error('[Robot Worker] 处理错误:', message.message);
             break;
@@ -786,47 +778,27 @@ ipcMain.handle('start-global-mouse-listening', async () => {
       return { success: true, message: '监听已启动' };
     }
 
-    // 确保robotjs可用
-    if (!robot) {
-      return { success: false, message: 'robotjs不可用' };
+    // 确保robotWorker可用
+    if (!robotWorker) {
+      return { success: false, message: 'Robot Worker不可用' };
     }
 
-    globalMouseListening = true;
-    
-    // 获取初始鼠标位置
-    const initialPos = robot.getMousePos();
-    lastMousePosition = { x: initialPos.x, y: initialPos.y };
-    
-    console.log('[全局鼠标] 开始监听，初始位置:', lastMousePosition);
-
-    // 启动鼠标位置监听循环
-    mouseListenerInterval = setInterval(() => {
-      if (!globalMouseListening) return;
-
-      try {
-        const currentPos = robot.getMousePos();
-        
-        // 检查位置是否改变
-        if (currentPos.x !== lastMousePosition.x || currentPos.y !== lastMousePosition.y) {
-          // 发送鼠标移动事件到渲染进程
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('global-mouse-move', {
-              x: currentPos.x,
-              y: currentPos.y,
-              previousX: lastMousePosition.x,
-              previousY: lastMousePosition.y,
-              timestamp: Date.now()
-            });
+    // 通过worker启动全局鼠标监听
+    return new Promise((resolve) => {
+      const messageHandler = (message) => {
+        if (message.type === 'start-global-mouse-listening-result') {
+          robotWorker.off('message', messageHandler);
+          if (message.result.success) {
+            globalMouseListening = true;
+            console.log('[全局鼠标] 通过Worker启动监听成功');
           }
-          
-          lastMousePosition = { x: currentPos.x, y: currentPos.y };
+          resolve(message.result);
         }
-      } catch (error) {
-        console.error('[全局鼠标] 位置监听错误:', error);
-      }
-    }, 8); // 8ms间隔，约120fps
-
-    return { success: true, message: '全局鼠标监听已启动' };
+      };
+      
+      robotWorker.on('message', messageHandler);
+      robotWorker.postMessage({ type: 'start-global-mouse-listening' });
+    });
     
   } catch (error) {
     console.error('[全局鼠标] 启动失败:', error);
@@ -838,24 +810,39 @@ ipcMain.handle('start-global-mouse-listening', async () => {
 ipcMain.handle('stop-global-mouse-listening', async () => {
   try {
     if (!globalMouseListening) {
+      console.log('[全局鼠标] 监听未启动');
       return { success: true, message: '监听未启动' };
     }
 
-    globalMouseListening = false;
-    
-    if (mouseListenerInterval) {
-      clearInterval(mouseListenerInterval);
-      mouseListenerInterval = null;
+    // 确保robotWorker可用
+    if (!robotWorker) {
+      return { success: false, message: 'Robot Worker不可用' };
     }
 
-    console.log('[全局鼠标] 监听已停止');
-    return { success: true, message: '全局鼠标监听已停止' };
+    // 通过worker停止全局鼠标监听
+    return new Promise((resolve) => {
+      const messageHandler = (message) => {
+        if (message.type === 'stop-global-mouse-listening-result') {
+          robotWorker.off('message', messageHandler);
+          if (message.result.success) {
+            globalMouseListening = false;
+            console.log('[全局鼠标] 通过Worker停止监听成功');
+          }
+          resolve(message.result);
+        }
+      };
+      
+      robotWorker.on('message', messageHandler);
+      robotWorker.postMessage({ type: 'stop-global-mouse-listening' });
+    });
     
   } catch (error) {
     console.error('[全局鼠标] 停止失败:', error);
     return { success: false, message: error.message };
   }
 });
+
+
 
 // 设置全局鼠标事件监听（使用屏幕外监听技巧）
 ipcMain.handle('setup-global-mouse-events', async () => {

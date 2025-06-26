@@ -107,7 +107,6 @@ class ScreenShareApp {
       toggleControl: document.getElementById('toggleControl'),
       toggleFullscreen: document.getElementById('toggleFullscreen'),
       toggleKeyboard: document.getElementById('toggleKeyboard'),
-      toggleDebug: document.getElementById('toggleDebug'),
       stopViewing: document.getElementById('stopViewing'),
       // Display Areas
       screenSources: document.getElementById('screenSources'),
@@ -121,19 +120,6 @@ class ScreenShareApp {
       networkInfo: document.getElementById('networkInfo'),
       appStatus: document.getElementById('appStatus'),
       viewTitle: document.getElementById('viewTitle'),
-      // Debug elements
-      debugInfo: document.getElementById('debugInfo'),
-      clientPlatform: document.getElementById('clientPlatform'),
-      videoSize: document.getElementById('videoSize'),
-      mouseCoords: document.getElementById('mouseCoords'),
-      calcCoords: document.getElementById('calcCoords'),
-      controlStatus: document.getElementById('controlStatus'),
-      globalKeyboardStatus: document.getElementById('globalKeyboardStatus'),
-      pointerLockStatus: document.getElementById('pointerLockStatus'),
-      dragStatus: document.getElementById('dragStatus'),
-      scrollStatus: document.getElementById('scrollStatus'),
-      inputDevice: document.getElementById('inputDevice'),
-      remoteInfo: document.getElementById('remoteInfo'),
       // Virtual keyboard elements
       virtualKeyboard: document.getElementById('virtualKeyboard'),
       keyboardClose: document.getElementById('keyboardClose'),
@@ -153,8 +139,6 @@ class ScreenShareApp {
       pointerLockHint: document.getElementById('pointerLockHint'),
     };
     
-    // 初始化调试模式
-    this.debugMode = false;
     window.app = this; // 方便控制台调试
   }
 
@@ -189,7 +173,6 @@ class ScreenShareApp {
         this.toggleFullscreen();
       },
       toggleKeyboard: this.toggleVirtualKeyboard.bind(this),
-      toggleDebug: this.toggleDebug.bind(this),
       stopViewing: this.stopViewing.bind(this),
     };
 
@@ -207,41 +190,10 @@ class ScreenShareApp {
         this.dom.remoteVideo.disablePictureInPicture = true;
         this.dom.remoteVideo.setAttribute('playsinline', 'true');
         
-        // 绑定鼠标事件 - 增强版
-        this.dom.remoteVideo.addEventListener('mousemove', this.handleRemoteMouseMove.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('mousedown', this.handleRemoteMouseDown.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('mouseup', this.handleRemoteMouseUp.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('click', this.handleRemoteMouseClick.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('dblclick', this.handleRemoteDoubleClick.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('wheel', this.handleRemoteMouseWheel.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('contextmenu', this.handleRemoteContextMenu.bind(this), { passive: false });
+        // 鼠标事件已改为直接获取鼠标信息的方式，不再使用DOM事件
         
-        // 键盘事件（需要视频元素有焦点）
-        this.dom.remoteVideo.addEventListener('keydown', this.handleRemoteKeyDown.bind(this), { passive: false });
-        this.dom.remoteVideo.addEventListener('keyup', this.handleRemoteKeyUp.bind(this), { passive: false });
+        // 视频元素基本设置
         this.dom.remoteVideo.tabIndex = 0; // 使视频元素可以获得焦点
-        
-        // 初始化拖拽状态
-        this.dragState = {
-          isDragging: false,
-          button: null,
-          startX: 0,
-          startY: 0,
-          startTime: 0
-        };
-        
-        // 长按定时器
-        this.longPressTimer = null;
-        this.longPressDelay = 500; // 500ms判定为长按
-        
-        // 鼠标移动优化：节流和防抖机制
-        this.mouseMoveOptimizer = {
-          lastSendTime: 0,
-          throttleDelay: 8, // 8ms节流间隔 (约120fps)
-          pendingCommand: null,
-          timer: null,
-          maxPendingTime: 16 // 最大延迟16ms，确保响应性
-        };
         
         // 禁用选择和拖拽
         this.dom.remoteVideo.style.userSelect = 'none';
@@ -1688,28 +1640,33 @@ class ScreenShareApp {
   async stopGlobalMouseMode() {
     try {
       if (this.globalMouseMode) {
-        // 停止全局鼠标监听
-        await window.electronAPI.stopGlobalMouseListening();
-        
-        // 移除事件监听器
-        window.electronAPI.removeGlobalMouseListeners();
-        
-        // 恢复视频区域的原生光标
-        this.showVideoAreaCursor();
-        
-        this.globalMouseMode = false;
-        
-        console.log('[全局鼠标] 模式已停止');
-        this.updateAppStatus('全局鼠标模式已停止 - 已恢复DOM事件模式');
-        
-        // 更新按钮状态
-        this.updateGlobalMouseButton(false);
-        
-        // 更新模式指示器
-        this.updateCursorModeIndicator('dom');
+        // 通过Worker停止全局鼠标监听
+        const result = await window.electronAPI.stopGlobalMouseListening();
+        if (result.success) {
+          // 移除事件监听器
+          window.electronAPI.removeGlobalMouseListeners();
+          
+          // 恢复视频区域的原生光标
+          this.showVideoAreaCursor();
+          
+          this.globalMouseMode = false;
+          
+          console.log('[全局鼠标] 模式已停止');
+          this.updateAppStatus('全局鼠标模式已停止 - 已恢复DOM事件模式');
+          
+          // 更新按钮状态
+          this.updateGlobalMouseButton(false);
+          
+          // 更新模式指示器
+          this.updateCursorModeIndicator('dom');
+        } else {
+          console.error('[全局鼠标] 停止失败:', result.message);
+          this.updateAppStatus(`停止全局鼠标模式失败: ${result.message}`);
+        }
       }
     } catch (error) {
       console.error('[全局鼠标] 停止失败:', error);
+      this.updateAppStatus(`停止全局鼠标模式失败: ${error.message}`);
     }
   }
 
@@ -1777,12 +1734,6 @@ class ScreenShareApp {
       if (videoCoords.valid) {
         // 发送远程控制命令
         this.sendGlobalMouseMove(videoCoords, data);
-        
-        // 更新调试信息
-        if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
-          this.dom.mouseCoords.textContent = `全局(${x}, ${y})`;
-          this.dom.calcCoords.textContent = `视频(${videoCoords.x}, ${videoCoords.y}) ✓`;
-        }
       }
     }
     
@@ -1880,14 +1831,6 @@ class ScreenShareApp {
     };
     
     p2p.sendControlCommand(command);
-    
-    if (this.debugMode && Math.random() < 0.01) {
-      console.log('[全局鼠标] 发送移动命令:', {
-        视频坐标: coords,
-        全局坐标: globalData,
-        时间戳: globalData.timestamp
-      });
-    }
   }
 
   // 处理光标可见性变化 - 已简化
@@ -1990,11 +1933,6 @@ class ScreenShareApp {
      this.pointerLockChangeHandler = () => {
        const isLocked = document.pointerLockElement === this.dom.videoContainer;
        console.log('[指针锁定] 状态变化:', isLocked ? '已锁定' : '已解锁');
-       
-       // 更新调试信息
-       if (this.dom.pointerLockStatus) {
-         this.dom.pointerLockStatus.textContent = isLocked ? '已锁定' : '未锁定';
-       }
        
        if (!isLocked && this.isControlEnabled) {
          // 如果意外失去锁定，显示提示
@@ -2118,12 +2056,6 @@ class ScreenShareApp {
     
     if (coords.valid) {
       this.sendMouseCommand('mousemove', coords);
-      
-      // 更新调试信息
-      if (this.debugMode && this.dom.mouseCoords && this.dom.calcCoords) {
-        this.dom.mouseCoords.textContent = `虚拟(${Math.round(this.virtualMousePosition.x)}, ${Math.round(this.virtualMousePosition.y)})`;
-        this.dom.calcCoords.textContent = `远程(${coords.x}, ${coords.y}) ✓`;
-      }
     }
   }
 

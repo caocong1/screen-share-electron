@@ -24,6 +24,11 @@ try {
   process.exit(1);
 }
 
+// 全局鼠标监听相关变量
+let globalMouseListening = false;
+let mouseListenerInterval = null;
+let lastMousePosition = { x: 0, y: 0 };
+
 // 鼠标移动防抖优化
 const mouseMoveBuffer = {
   queue: [],
@@ -81,6 +86,85 @@ function addMouseMoveToQueue(data) {
     processPendingMouseMoves();
     mouseMoveBuffer.timer = null;
   }, mouseMoveBuffer.batchDelay);
+}
+
+/**
+ * 启动全局鼠标监听
+ */
+function startGlobalMouseListening() {
+  try {
+    if (globalMouseListening) {
+      console.log('[Robot Worker] 全局鼠标监听已经启动');
+      return { success: true, message: '监听已启动' };
+    }
+
+    globalMouseListening = true;
+    
+    // 获取初始鼠标位置
+    const initialPos = robot.getMousePos();
+    lastMousePosition = { x: initialPos.x, y: initialPos.y };
+    
+    console.log('[Robot Worker] 开始全局鼠标监听，初始位置:', lastMousePosition);
+
+    // 启动鼠标位置监听循环
+    mouseListenerInterval = setInterval(() => {
+      if (!globalMouseListening) return;
+
+      try {
+        const currentPos = robot.getMousePos();
+        
+        // 检查位置是否改变
+        if (currentPos.x !== lastMousePosition.x || currentPos.y !== lastMousePosition.y) {
+          // 发送鼠标移动事件到主进程
+          parentPort.postMessage({
+            type: 'global-mouse-move',
+            data: {
+              x: currentPos.x,
+              y: currentPos.y,
+              previousX: lastMousePosition.x,
+              previousY: lastMousePosition.y,
+              timestamp: Date.now()
+            }
+          });
+          
+          lastMousePosition = { x: currentPos.x, y: currentPos.y };
+        }
+      } catch (error) {
+        console.error('[Robot Worker] 全局鼠标位置监听错误:', error);
+      }
+    }, 8); // 8ms间隔，约120fps
+
+    return { success: true, message: '全局鼠标监听已启动' };
+    
+  } catch (error) {
+    console.error('[Robot Worker] 启动全局鼠标监听失败:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * 停止全局鼠标监听
+ */
+function stopGlobalMouseListening() {
+  try {
+    if (!globalMouseListening) {
+      return { success: true, message: '监听未启动' };
+    }
+
+    globalMouseListening = false;
+    
+    if (mouseListenerInterval) {
+      clearInterval(mouseListenerInterval);
+      mouseListenerInterval = null;
+    }
+    
+    console.log('[Robot Worker] 全局鼠标监听已停止');
+    return { success: true, message: '全局鼠标监听已停止' };
+    
+  } catch (error) {
+    console.error('[Robot Worker] 停止全局鼠标监听失败:', error);
+    return { success: false, message: error.message };
+  }
 }
 
 /**
@@ -143,6 +227,26 @@ parentPort.on('message', (message) => {
   try {
     const { type, data } = message;
     
+    // 处理全局鼠标监听命令
+    if (type === 'start-global-mouse-listening') {
+      const result = startGlobalMouseListening();
+      parentPort.postMessage({
+        type: 'start-global-mouse-listening-result',
+        result: result
+      });
+      return;
+    }
+    
+    if (type === 'stop-global-mouse-listening') {
+      const result = stopGlobalMouseListening();
+      parentPort.postMessage({
+        type: 'stop-global-mouse-listening-result',
+        result: result
+      });
+      return;
+    }
+    
+    // 处理远程控制命令
     switch (data.type) {
       case 'mousemove':
       case 'mousedrag':
