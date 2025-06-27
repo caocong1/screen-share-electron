@@ -1728,6 +1728,16 @@ class ScreenShareApp {
 			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
+			console.log("[Canvas鼠标] 收到鼠标按下事件:", {
+				event: event,
+				button: event.button,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				isControlEnabled: this.isControlEnabled,
+				pointerLocked: !!document.pointerLockElement,
+				mode: "normal",
+			});
+
 			this.isDragging = true;
 			this.dragButton = event.button;
 
@@ -1739,8 +1749,8 @@ class ScreenShareApp {
 				});
 			}
 
-			// 如果不在指针锁定状态，尝试请求锁定
-			if (!document.pointerLockElement) {
+			// 只有在左键点击时才尝试启用指针锁定，右键点击不启用
+			if (!document.pointerLockElement && event.button === 0) {
 				this.enablePointerLock();
 			}
 		};
@@ -1786,16 +1796,30 @@ class ScreenShareApp {
 			});
 			
 			if (coords.valid) {
-				console.log("[Canvas鼠标] 发送点击命令:", {
-					type: "mouseclick",
-					coords: coords,
-					button: event.button,
-					source: "canvas-normal",
-				});
-				this.sendMouseCommand("mouseclick", coords, {
-					button: event.button,
-					source: "canvas-normal",
-				});
+				// 对于右键点击，发送contextmenu事件而不是mouseclick
+				if (event.button === 2) {
+					console.log("[Canvas鼠标] 右键点击，发送contextmenu命令:", {
+						type: "contextmenu",
+						coords: coords,
+						button: event.button,
+						source: "canvas-right-click",
+					});
+					this.sendMouseCommand("contextmenu", coords, {
+						button: event.button,
+						source: "canvas-right-click",
+					});
+				} else {
+					console.log("[Canvas鼠标] 发送点击命令:", {
+						type: "mouseclick",
+						coords: coords,
+						button: event.button,
+						source: "canvas-normal",
+					});
+					this.sendMouseCommand("mouseclick", coords, {
+						button: event.button,
+						source: "canvas-normal",
+					});
+				}
 			} else {
 				console.warn("[Canvas鼠标] 点击事件坐标无效，跳过发送");
 			}
@@ -2019,7 +2043,7 @@ class ScreenShareApp {
 			// 根据拖拽状态发送不同的事件类型
 			const eventType = this.isDragging ? "mousedrag" : "mousemove";
 			this.sendMouseCommand(eventType, coords, {
-				button: this.dragButton,
+					button: this.dragButton,
 			});
 		}
 	}
@@ -2337,16 +2361,30 @@ class ScreenShareApp {
 					this.virtualMousePosition.y,
 				);
 				if (coords.valid) {
-					console.log("[指针锁定] 发送点击命令:", {
-						type: "mouseclick",
-						coords: coords,
-						button: event.button,
-						source: "pointer-lock",
-					});
-					this.sendMouseCommand("mouseclick", coords, {
-						button: event.button,
-						source: "pointer-lock",
-					});
+					// 对于右键点击，发送contextmenu事件而不是mouseclick
+					if (event.button === 2) {
+						console.log("[指针锁定] 右键点击，发送contextmenu命令:", {
+							type: "contextmenu",
+							coords: coords,
+							button: event.button,
+							source: "pointer-lock-right-click",
+						});
+						this.sendMouseCommand("contextmenu", coords, {
+							button: event.button,
+							source: "pointer-lock-right-click",
+						});
+					} else {
+						console.log("[指针锁定] 发送点击命令:", {
+							type: "mouseclick",
+							coords: coords,
+							button: event.button,
+							source: "pointer-lock",
+						});
+						this.sendMouseCommand("mouseclick", coords, {
+							button: event.button,
+							source: "pointer-lock",
+						});
+					}
 				}
 			}
 		};
