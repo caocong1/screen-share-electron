@@ -166,9 +166,21 @@ parentPort.on("message", async (message) => {
 				break;
 
 			case "mousedown": {
+				console.log("[Nut Worker] 收到鼠标按下事件:", {
+					data: data,
+					hasCoords: data.x !== undefined && data.y !== undefined,
+					button: data.button,
+					source: data.source,
+					isDragging: data.isDragging,
+				});
+				
 				// 鼠标按下需要立即处理
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
+					console.log("[Nut Worker] 坐标转换结果:", {
+						原始: { x: data.x, y: data.y },
+						转换后: coords,
+					});
 					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
@@ -181,7 +193,7 @@ parentPort.on("message", async (message) => {
 								: Button.Right
 						: Button.Left;
 				await mouse.press(downButton);
-				console.log("[Nut Worker] 鼠标按下:", {
+				console.log("[Nut Worker] 鼠标按下成功:", {
 					button: data.button,
 					mapped: downButton,
 				});
@@ -189,8 +201,19 @@ parentPort.on("message", async (message) => {
 			}
 
 			case "mouseup": {
+				console.log("[Nut Worker] 收到鼠标释放事件:", {
+					data: data,
+					hasCoords: data.x !== undefined && data.y !== undefined,
+					button: data.button,
+					source: data.source,
+				});
+				
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
+					console.log("[Nut Worker] 坐标转换结果:", {
+						原始: { x: data.x, y: data.y },
+						转换后: coords,
+					});
 					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
@@ -203,7 +226,7 @@ parentPort.on("message", async (message) => {
 								: Button.Right
 						: Button.Left;
 				await mouse.release(upButton);
-				console.log("[Nut Worker] 鼠标释放:", {
+				console.log("[Nut Worker] 鼠标释放成功:", {
 					button: data.button,
 					mapped: upButton,
 				});
@@ -211,12 +234,29 @@ parentPort.on("message", async (message) => {
 			}
 
 			case "mouseclick": {
-				// 检查是否在拖拽状态中，如果是拖拽操作，则忽略后续的click事件
-				// 避免拖拽选中被意外取消
-				if (data.isDragging === false || data.source === "standalone-click") {
-					// 只有在非拖拽状态下，或者明确标记为独立点击时才处理click事件
+				console.log("[Nut Worker] 收到鼠标点击事件:", {
+					data: data,
+					hasCoords: data.x !== undefined && data.y !== undefined,
+					button: data.button,
+					source: data.source,
+					isDragging: data.isDragging,
+					条件检查: {
+						isDraggingFalse: data.isDragging === false,
+						sourceStandalone: data.source === "standalone-click",
+						应该处理: data.isDragging === false || data.source === "standalone-click",
+					},
+				});
+				
+				// 修复：简化条件检查，确保所有点击事件都能被处理
+				// 只有在明确标记为拖拽状态时才忽略点击事件
+				if (data.isDragging !== true) {
+					// 只有在非拖拽状态下才处理click事件
 					if (data.x !== undefined && data.y !== undefined) {
 						const coords = transformCoordinates(data);
+						console.log("[Nut Worker] 坐标转换结果:", {
+							原始: { x: data.x, y: data.y },
+							转换后: coords,
+						});
 						await mouse.move([new Point(coords.x, coords.y)]);
 					}
 					// 映射按键值：0=left, 1=middle, 2=right
@@ -229,7 +269,7 @@ parentPort.on("message", async (message) => {
 									: Button.Right
 							: Button.Left;
 					await mouse.click(clickButton);
-					console.log("[Nut Worker] 鼠标点击:", {
+					console.log("[Nut Worker] 鼠标点击成功:", {
 						button: data.button,
 						mapped: clickButton,
 					});

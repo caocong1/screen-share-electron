@@ -1769,12 +1769,35 @@ class ScreenShareApp {
 			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
+			console.log("[Canvas鼠标] 收到点击事件:", {
+				event: event,
+				button: event.button,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				isControlEnabled: this.isControlEnabled,
+				pointerLocked: !!document.pointerLockElement,
+				mode: "normal",
+			});
+
 			const coords = this.getMouseCoords(event);
+			console.log("[Canvas鼠标] 坐标计算结果:", {
+				coords: coords,
+				valid: coords.valid,
+			});
+			
 			if (coords.valid) {
+				console.log("[Canvas鼠标] 发送点击命令:", {
+					type: "mouseclick",
+					coords: coords,
+					button: event.button,
+					source: "canvas-normal",
+				});
 				this.sendMouseCommand("mouseclick", coords, {
 					button: event.button,
 					source: "canvas-normal",
 				});
+			} else {
+				console.warn("[Canvas鼠标] 点击事件坐标无效，跳过发送");
 			}
 		};
 
@@ -2523,11 +2546,24 @@ class ScreenShareApp {
 
 	// 新增：发送鼠标命令的通用方法
 	sendMouseCommand(type, coords, extra = {}) {
+		console.log("[发送鼠标命令] 开始处理:", {
+			type: type,
+			coords: coords,
+			extra: extra,
+			isDragging: this.isDragging,
+		});
+
 		const p2p = this.p2pConnections.values().next().value;
-		if (!p2p) return;
+		if (!p2p) {
+			console.warn("[发送鼠标命令] 没有可用的P2P连接");
+			return;
+		}
 
 		const screenInfo = this.getRemoteScreenInfo();
-		if (!screenInfo) return;
+		if (!screenInfo) {
+			console.warn("[发送鼠标命令] 没有远程屏幕信息");
+			return;
+		}
 
 		const command = {
 			type: type,
@@ -2540,9 +2576,11 @@ class ScreenShareApp {
 			},
 			screenInfo: screenInfo,
 			source: "canvas-dom", // 标记来源为Canvas DOM事件
-			isDragging: this.isDragging,
+			isDragging: this.isDragging, // 确保拖拽状态正确传递
 			...extra,
 		};
+
+		console.log("[发送鼠标命令] 构建的命令:", command);
 
 		// 调试信息
 		if (this.dom.dragStatus && type.includes("mouse")) {
@@ -2551,7 +2589,12 @@ class ScreenShareApp {
 				: "无";
 		}
 
-		p2p.sendControlCommand(command);
+		try {
+			p2p.sendControlCommand(command);
+			console.log("[发送鼠标命令] 命令已发送到P2P连接");
+		} catch (error) {
+			console.error("[发送鼠标命令] 发送失败:", error);
+		}
 	}
 }
 
