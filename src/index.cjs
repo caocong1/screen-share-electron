@@ -56,7 +56,7 @@ const createWindow = () => {
 ipcMain.handle('get-desktop-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({
-      types: ['screen', 'window'],
+      types: ['screen'], // 只获取屏幕源，不获取窗口
       thumbnailSize: { width: 200, height: 150 }
     });
     console.log('[DESKTOP-SOURCES] 获取到的源:', sources);
@@ -66,8 +66,7 @@ ipcMain.handle('get-desktop-sources', async () => {
     const allDisplays = screen.getAllDisplays();
     const primaryDisplay = screen.getPrimaryDisplay();
     
-    // 获取所有窗口的位置信息（仅在 macOS 上）
-    const allWindowsInfo = await getAllWindowsInfo();
+
     
     console.log('[DESKTOP-SOURCES] 获取到的源数量:', sources.length);
     console.log('[DESKTOP-SOURCES] 可用显示器:', allDisplays.map(d => ({
@@ -79,12 +78,10 @@ ipcMain.handle('get-desktop-sources', async () => {
     
     return sources.map((source, index) => {
       let screenInfo = null;
-      let windowInfo = null;
       
-      console.log(`[DESKTOP-SOURCES] 处理源 ${index}:`, {
+      console.log(`[DESKTOP-SOURCES] 处理屏幕源 ${index}:`, {
         id: source.id,
         name: source.name,
-        appIcon: !!source.appIcon,
         display_id: source.display_id
       });
       
@@ -132,126 +129,6 @@ ipcMain.handle('get-desktop-sources', async () => {
           }
         }
       }
-      // 处理窗口源
-      else if (source.id.startsWith('window:')) {
-        // 首先尝试通过窗口名称匹配实际窗口位置
-        const matchedWindow = findBestWindowMatch(source.name, allWindowsInfo);
-        
-        if (matchedWindow) {
-          // 找到匹配的窗口，使用实际位置信息
-          const windowX = matchedWindow.x;
-          const windowY = matchedWindow.y;
-          const windowWidth = matchedWindow.width;
-          const windowHeight = matchedWindow.height;
-          
-          // 查找包含此窗口的显示器
-          const containingDisplay = allDisplays.find(display => {
-            const bounds = display.bounds;
-            return windowX >= bounds.x && 
-                   windowX < bounds.x + bounds.width &&
-                   windowY >= bounds.y && 
-                   windowY < bounds.y + bounds.height;
-          });
-          
-          if (containingDisplay) {
-            screenInfo = {
-              bounds: {
-                x: windowX,
-                y: windowY,
-                width: windowWidth,
-                height: windowHeight
-              },
-              workArea: containingDisplay.workArea,
-              scaleFactor: containingDisplay.scaleFactor,
-              isPrimary: containingDisplay.id === primaryDisplay.id,
-              displayId: containingDisplay.id,
-              actualWindowBounds: {
-                x: windowX,
-                y: windowY,
-                width: windowWidth,
-                height: windowHeight
-              },
-              relativePosition: {
-                x: windowX - containingDisplay.bounds.x,
-                y: windowY - containingDisplay.bounds.y
-              }
-            };
-            
-            windowInfo = {
-              type: 'window',
-              appName: matchedWindow.appName,
-              windowName: matchedWindow.windowName,
-              actualPosition: true,
-              thumbnailSize: {
-                width: source.thumbnail ? source.thumbnail.getSize().width : null,
-                height: source.thumbnail ? source.thumbnail.getSize().height : null
-              }
-            };
-            
-            console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 找到实际位置:`, {
-              windowName: source.name,
-              actualBounds: screenInfo.bounds,
-              displayId: containingDisplay.id,
-              displayBounds: containingDisplay.bounds
-            });
-          } else {
-            // 窗口位置超出所有显示器范围，可能是窗口在屏幕外
-            console.warn(`[DESKTOP-SOURCES] 窗口 ${source.name} 位置超出显示器范围:`, {
-              windowPos: { x: windowX, y: windowY },
-              displays: allDisplays.map(d => d.bounds)
-            });
-          }
-        }
-        
-        // 如果没有找到匹配的窗口，尝试通过 display_id 匹配显示器
-        if (!screenInfo && source.display_id) {
-          const display = allDisplays.find(d => d.id.toString() === source.display_id.toString());
-          if (display) {
-            screenInfo = {
-              bounds: display.bounds,
-              workArea: display.workArea,
-              scaleFactor: display.scaleFactor,
-              isPrimary: display.id === primaryDisplay.id,
-              displayId: display.id
-            };
-            
-            windowInfo = {
-              type: 'window',
-              appName: source.name,
-              thumbnailSize: {
-                width: source.thumbnail ? source.thumbnail.getSize().width : null,
-                height: source.thumbnail ? source.thumbnail.getSize().height : null
-              }
-            };
-            
-            console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 通过display_id匹配到显示器:`, screenInfo);
-          }
-        }
-        
-        // 如果仍然无法确定窗口位置，使用主显示器作为估算
-        if (!screenInfo) {
-          screenInfo = {
-            bounds: primaryDisplay.bounds,
-            workArea: primaryDisplay.workArea,
-            scaleFactor: primaryDisplay.scaleFactor,
-            isPrimary: true,
-            displayId: primaryDisplay.id,
-            estimated: true // 标记为估算值
-          };
-          
-          windowInfo = {
-            type: 'window',
-            appName: source.name,
-            thumbnailSize: {
-              width: source.thumbnail ? source.thumbnail.getSize().width : null,
-              height: source.thumbnail ? source.thumbnail.getSize().height : null
-            },
-            estimated: true
-          };
-          
-          console.log(`[DESKTOP-SOURCES] 窗口源 ${source.id} 无法确定显示器，使用主显示器作为估算:`, screenInfo);
-        }
-      }
       
       // 如果仍然没有匹配到具体的屏幕，使用主显示器信息作为默认值
       if (!screenInfo) {
@@ -266,20 +143,13 @@ ipcMain.handle('get-desktop-sources', async () => {
         console.log(`[DESKTOP-SOURCES] 源 ${source.id} 使用主显示器信息作为后备:`, screenInfo);
       }
       
-      const result = {
+      return {
         id: source.id,
         name: source.name,
         thumbnail: source.thumbnail.toDataURL(),
         screenInfo: screenInfo,
         display_id: source.display_id
       };
-      
-      // 如果是窗口源，添加窗口信息
-      if (windowInfo) {
-        result.windowInfo = windowInfo;
-      }
-      
-      return result;
     });
   } catch (error) {
     console.error('获取桌面源失败:', error);
@@ -576,108 +446,9 @@ ipcMain.handle('get-display-info', () => {
   };
 });
 
-// 获取所有窗口的位置信息（macOS 专用）
-async function getAllWindowsInfo() {
-  if (process.platform !== 'darwin') {
-    return {};
-  }
 
-  const { exec } = require('child_process');
-  const util = require('util');
-  const execPromise = util.promisify(exec);
-  
-  try {
-    // 使用 AppleScript 获取所有可见窗口的信息
-    const { stdout } = await execPromise(`
-      osascript -e '
-        tell application "System Events"
-          set windowList to {}
-          repeat with proc in application processes
-            try
-              if visible of proc is true then
-                set procName to name of proc
-                repeat with win in windows of proc
-                  try
-                    set windowName to name of win
-                    set windowPosition to position of win
-                    set windowSize to size of win
-                    set windowInfo to procName & "::" & windowName & "::" & (item 1 of windowPosition) & "::" & (item 2 of windowPosition) & "::" & (item 1 of windowSize) & "::" & (item 2 of windowSize)
-                    set end of windowList to windowInfo
-                  end try
-                end repeat
-              end if
-            end try
-          end repeat
-          
-          set AppleScript'"'"'s text item delimiters to "|||"
-          set windowListString to windowList as string
-          set AppleScript'"'"'s text item delimiters to ""
-          return windowListString
-        end tell
-      '
-    `);
-    
-    const windowsInfo = {};
-    const windowEntries = stdout.trim().split('|||');
-    
-    for (const entry of windowEntries) {
-      if (entry.trim() === '') continue;
-      
-      const [appName, windowName, x, y, width, height] = entry.split('::');
-      if (appName && windowName && x && y && width && height) {
-        const key = `${appName}:${windowName}`;
-        windowsInfo[key] = {
-          appName: appName,
-          windowName: windowName,
-          x: parseInt(x),
-          y: parseInt(y),
-          width: parseInt(width),
-          height: parseInt(height)
-        };
-      }
-    }
-    
-    console.log(`[ALL-WINDOWS] 获取到 ${Object.keys(windowsInfo).length} 个窗口信息`);
-    return windowsInfo;
-    
-  } catch (error) {
-    console.log('[ALL-WINDOWS] 无法获取窗口列表:', error.message);
-    return {};
-  }
-}
 
-// 根据窗口名称查找最佳匹配的窗口位置
-function findBestWindowMatch(sourceName, allWindowsInfo) {
-  const sourceNameLower = sourceName.toLowerCase();
-  
-  // 精确匹配窗口名称
-  for (const [key, info] of Object.entries(allWindowsInfo)) {
-    if (info.windowName.toLowerCase() === sourceNameLower) {
-      console.log(`[WINDOW-MATCH] 精确匹配: ${sourceName} -> ${key}`);
-      return info;
-    }
-  }
-  
-  // 部分匹配窗口名称
-  for (const [key, info] of Object.entries(allWindowsInfo)) {
-    if (info.windowName.toLowerCase().includes(sourceNameLower) || 
-        sourceNameLower.includes(info.windowName.toLowerCase())) {
-      console.log(`[WINDOW-MATCH] 部分匹配: ${sourceName} -> ${key}`);
-      return info;
-    }
-  }
-  
-  // 匹配应用名称
-  for (const [key, info] of Object.entries(allWindowsInfo)) {
-    if (info.appName.toLowerCase() === sourceNameLower) {
-      console.log(`[WINDOW-MATCH] 应用名匹配: ${sourceName} -> ${key}`);
-      return info;
-    }
-  }
-  
-  console.log(`[WINDOW-MATCH] 未找到匹配: ${sourceName}`);
-  return null;
-}
+
 
 // 获取窗口详细信息（包括实际位置和大小）
 ipcMain.handle('get-window-details', async (event, sourceId) => {
@@ -948,233 +719,7 @@ ipcMain.handle('get-current-mouse-position', async () => {
   }
 });
 
-// 激活并置顶窗口
-ipcMain.handle('activate-window', async (event, windowInfo) => {
-  try {
-    console.log('[窗口激活] 尝试激活窗口:', windowInfo);
-    
-    if (process.platform === 'darwin') {
-      // macOS: 使用 AppleScript 激活窗口
-      const { exec } = require('child_process');
-      const util = require('util');
-      const execPromise = util.promisify(exec);
-      
-      let activationScript = '';
-      
-      if (windowInfo.windowName && windowInfo.appName) {
-        // 如果有具体的窗口名称和应用名称，优先使用
-        activationScript = `
-          osascript -e '
-            tell application "System Events"
-              try
-                set targetApp to application process "${windowInfo.appName}"
-                set targetWindow to first window of targetApp whose name is "${windowInfo.windowName}"
-                set frontmost of targetApp to true
-                perform action "AXRaise" of targetWindow
-                return "success: activated window ${windowInfo.windowName} of ${windowInfo.appName}"
-              on error errMsg
-                try
-                  -- 如果无法找到具体窗口，尝试激活整个应用
-                  tell application "${windowInfo.appName}"
-                    activate
-                    tell application "System Events"
-                      set frontmost of application process "${windowInfo.appName}" to true
-                    end tell
-                  end tell
-                  return "success: activated application ${windowInfo.appName}"
-                on error appErrMsg
-                  return "error: " & appErrMsg
-                end try
-              end try
-            end tell
-          '
-        `;
-      } else if (windowInfo.appName) {
-        // 如果只有应用名称，激活整个应用
-        activationScript = `
-          osascript -e '
-            try
-              tell application "${windowInfo.appName}"
-                activate
-                tell application "System Events"
-                  set frontmost of application process "${windowInfo.appName}" to true
-                end tell
-              end tell
-              return "success: activated application ${windowInfo.appName}"
-            on error errMsg
-              return "error: " & errMsg
-            end try
-          '
-        `;
-      } else {
-        return { success: false, message: '缺少窗口或应用信息' };
-      }
-      
-      try {
-        const { stdout } = await execPromise(activationScript);
-        const result = stdout.trim();
-        
-        if (result.startsWith('success:')) {
-          console.log('[窗口激活] 成功:', result);
-          return { 
-            success: true, 
-            message: result.replace('success: ', ''),
-            platform: 'darwin'
-          };
-        } else {
-          console.warn('[窗口激活] AppleScript 返回错误:', result);
-          return { 
-            success: false, 
-            message: result.replace('error: ', ''),
-            platform: 'darwin'
-          };
-        }
-      } catch (execError) {
-        console.error('[窗口激活] AppleScript 执行失败:', execError);
-        return { 
-          success: false, 
-          message: `AppleScript 执行失败: ${execError.message}`,
-          platform: 'darwin'
-        };
-      }
-    } else if (process.platform === 'win32') {
-      // Windows: 使用 Windows API 或者 PowerShell
-      const { exec } = require('child_process');
-      const util = require('util');
-      const execPromise = util.promisify(exec);
-      
-      try {
-        let powershellScript = '';
-        
-        if (windowInfo.windowName) {
-          // 尝试根据窗口标题激活
-          powershellScript = `
-            Add-Type -TypeDefinition '
-              using System;
-              using System.Diagnostics;
-              using System.Runtime.InteropServices;
-              public class WindowActivator {
-                [DllImport("user32.dll")]
-                public static extern bool SetForegroundWindow(IntPtr hWnd);
-                [DllImport("user32.dll")]
-                public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-                [DllImport("user32.dll")]
-                public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-                public static bool ActivateWindow(string windowTitle) {
-                  IntPtr hWnd = FindWindow(null, windowTitle);
-                  if (hWnd != IntPtr.Zero) {
-                    ShowWindow(hWnd, 9); // SW_RESTORE
-                    SetForegroundWindow(hWnd);
-                    return true;
-                  }
-                  return false;
-                }
-              }
-            '
-            [WindowActivator]::ActivateWindow("${windowInfo.windowName}")
-          `;
-        } else if (windowInfo.appName) {
-          // 根据应用名称激活
-          powershellScript = `
-            $processes = Get-Process -Name "*${windowInfo.appName}*" -ErrorAction SilentlyContinue
-            if ($processes) {
-              foreach ($process in $processes) {
-                if ($process.MainWindowHandle -ne [System.IntPtr]::Zero) {
-                  Add-Type -TypeDefinition '
-                    using System;
-                    using System.Runtime.InteropServices;
-                    public class WindowActivator {
-                      [DllImport("user32.dll")]
-                      public static extern bool SetForegroundWindow(IntPtr hWnd);
-                      [DllImport("user32.dll")]
-                      public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-                    }
-                  '
-                  [WindowActivator]::ShowWindow($process.MainWindowHandle, 9)
-                  [WindowActivator]::SetForegroundWindow($process.MainWindowHandle)
-                  Write-Output "success: activated $($process.ProcessName)"
-                  exit 0
-                }
-              }
-              Write-Output "error: no visible windows found"
-            } else {
-              Write-Output "error: process not found"
-            }
-          `;
-        } else {
-          return { success: false, message: '缺少窗口或应用信息' };
-        }
-        
-        const { stdout } = await execPromise(`powershell -Command "${powershellScript}"`);
-        const result = stdout.trim();
-        
-        if (result.startsWith('success:')) {
-          console.log('[窗口激活] Windows 成功:', result);
-          return { 
-            success: true, 
-            message: result.replace('success: ', ''),
-            platform: 'win32'
-          };
-        } else {
-          console.warn('[窗口激活] Windows 失败:', result);
-          return { 
-            success: false, 
-            message: result.replace('error: ', ''),
-            platform: 'win32'
-          };
-        }
-      } catch (execError) {
-        console.error('[窗口激活] PowerShell 执行失败:', execError);
-        return { 
-          success: false, 
-          message: `PowerShell 执行失败: ${execError.message}`,
-          platform: 'win32'
-        };
-      }
-    } else {
-      // Linux: 使用 wmctrl 或 xdotool
-      const { exec } = require('child_process');
-      const util = require('util');
-      const execPromise = util.promisify(exec);
-      
-      try {
-        let command = '';
-        
-        if (windowInfo.windowName) {
-          // 优先尝试使用 wmctrl
-          command = `wmctrl -a "${windowInfo.windowName}" 2>/dev/null || xdotool search --name "${windowInfo.windowName}" windowactivate 2>/dev/null`;
-        } else if (windowInfo.appName) {
-          command = `wmctrl -a "${windowInfo.appName}" 2>/dev/null || xdotool search --class "${windowInfo.appName}" windowactivate 2>/dev/null`;
-        } else {
-          return { success: false, message: '缺少窗口或应用信息' };
-        }
-        
-        await execPromise(command);
-        console.log('[窗口激活] Linux 成功');
-        return { 
-          success: true, 
-          message: '窗口已激活',
-          platform: 'linux'
-        };
-      } catch (execError) {
-        console.warn('[窗口激活] Linux 命令失败:', execError.message);
-        return { 
-          success: false, 
-          message: `窗口激活失败，请确保安装了 wmctrl 或 xdotool: ${execError.message}`,
-          platform: 'linux'
-        };
-      }
-    }
-    
-  } catch (error) {
-    console.error('[窗口激活] 激活失败:', error);
-    return { 
-      success: false, 
-      message: error.message,
-      platform: process.platform
-    };
-  }
-});
+
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.

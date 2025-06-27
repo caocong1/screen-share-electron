@@ -23,9 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 获取窗口详细信息（包括实际位置和大小）
   getWindowDetails: (sourceId) => ipcRenderer.invoke('get-window-details', sourceId),
   
-  // 激活并置顶窗口
-  activateWindow: (windowInfo) => ipcRenderer.invoke('activate-window', windowInfo),
-  
   // 新增：全局鼠标监听API
   startGlobalMouseListening: () => ipcRenderer.invoke('start-global-mouse-listening'),
   stopGlobalMouseListening: () => ipcRenderer.invoke('stop-global-mouse-listening'),
