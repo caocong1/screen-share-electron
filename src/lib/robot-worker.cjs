@@ -176,11 +176,19 @@ parentPort.on("message", (message) => {
 				break;
 
 			case "mouseclick":
-				if (data.x !== undefined && data.y !== undefined) {
-					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+				// 检查是否在拖拽状态中，如果是拖拽操作，则忽略后续的click事件
+				// 避免拖拽选中被意外取消
+				if (data.isDragging === false || data.source === "standalone-click") {
+					// 只有在非拖拽状态下，或者明确标记为独立点击时才处理click事件
+					if (data.x !== undefined && data.y !== undefined) {
+						const coords = transformCoordinates(data);
+						robot.moveMouse(coords.x, coords.y);
+					}
+					robot.mouseClick(data.button || "left", false);
+				} else {
+					// 拖拽后的click事件被忽略
+					console.log("[Robot Worker] 忽略拖拽后的click事件，防止取消选中");
 				}
-				robot.mouseClick(data.button || "left", false);
 				break;
 
 			case "doubleclick":
@@ -211,7 +219,59 @@ parentPort.on("message", (message) => {
 				break;
 
 			case "scroll":
-				if (typeof data.x === "number" || typeof data.y === "number") {
+				// 修复滚轮事件处理
+				if (
+					typeof data.deltaX === "number" ||
+					typeof data.deltaY === "number"
+				) {
+					// 优先使用原始的 deltaX/deltaY 值
+					let scrollX = 0;
+					let scrollY = 0;
+
+					// 处理 deltaY（垂直滚动）
+					if (typeof data.deltaY === "number" && data.deltaY !== 0) {
+						// 根据 deltaMode 调整滚动量
+						if (data.deltaMode === 0) {
+							// DOM_DELTA_PIXEL - 像素模式
+							scrollY = Math.round(data.deltaY / 10); // 减小滚动量
+						} else if (data.deltaMode === 1) {
+							// DOM_DELTA_LINE - 行模式
+							scrollY = Math.round(data.deltaY);
+						} else if (data.deltaMode === 2) {
+							// DOM_DELTA_PAGE - 页面模式
+							scrollY = Math.round(data.deltaY * 10);
+						} else {
+							scrollY = Math.round(data.deltaY / 10);
+						}
+					}
+
+					// 处理 deltaX（水平滚动）
+					if (typeof data.deltaX === "number" && data.deltaX !== 0) {
+						if (data.deltaMode === 0) {
+							scrollX = Math.round(data.deltaX / 10);
+						} else if (data.deltaMode === 1) {
+							scrollX = Math.round(data.deltaX);
+						} else if (data.deltaMode === 2) {
+							scrollX = Math.round(data.deltaX * 10);
+						} else {
+							scrollX = Math.round(data.deltaX / 10);
+						}
+					}
+
+					// 执行滚动
+					if (scrollX !== 0 || scrollY !== 0) {
+						robot.scrollMouse(scrollX, scrollY);
+						console.log("[Robot Worker] 滚轮操作:", {
+							原始: {
+								deltaX: data.deltaX,
+								deltaY: data.deltaY,
+								deltaMode: data.deltaMode,
+							},
+							处理后: { scrollX, scrollY },
+						});
+					}
+				} else if (typeof data.x === "number" || typeof data.y === "number") {
+					// 兜底逻辑：使用处理过的 x/y 值
 					robot.scrollMouse(Math.round(data.x || 0), Math.round(data.y || 0));
 				}
 				break;
