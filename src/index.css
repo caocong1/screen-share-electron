@@ -478,7 +478,7 @@ body {
   min-height: 400px;
 }
 
-.video-container video {
+.video-container canvas {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -489,14 +489,15 @@ body {
   pointer-events: auto;
   cursor: crosshair;
   outline: none;
+  background: #000;
 }
 
-.video-container video:focus {
+.video-container canvas:focus {
   outline: none;
 }
 
 /* 当控制启用时改变鼠标样式 */
-.control-enabled .video-container video {
+.control-enabled .video-container canvas {
   cursor: crosshair;
 }
 
@@ -505,46 +506,11 @@ body {
   background: #000;
 }
 
-.video-container:fullscreen video {
+.video-container:fullscreen canvas {
   width: 100vw;
   height: 100vh;
   object-fit: contain;
-  /* 隐藏所有默认控件 */
-  -webkit-media-controls: none;
-  -moz-appearance: none;
-  appearance: none;
-}
-
-.video-container:fullscreen video::-webkit-media-controls {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-panel {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-play-button {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-volume-slider {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-fullscreen-button {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-timeline {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-current-time-display {
-  display: none !important;
-}
-
-.video-container:fullscreen video::-webkit-media-controls-time-remaining-display {
-  display: none !important;
+  background: #000;
 }
 
 /* 全屏模式下的浮动控制面板 */
@@ -586,7 +552,7 @@ body {
   box-shadow: 0 0 15px rgba(0, 123, 255, 0.5);
 }
 
-.video-container.dragging video {
+.video-container.dragging canvas {
   cursor: grabbing !important;
 }
 

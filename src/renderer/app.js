@@ -2,6 +2,135 @@ import { config } from '../lib/config.js';
 import { P2PConnection } from '../lib/p2p-connection.js';
 
 /**
+ * Canvas视频渲染器类
+ */
+class CanvasVideoRenderer {
+  constructor(canvasElement) {
+    this.canvas = canvasElement;
+    this.ctx = this.canvas.getContext('2d');
+    this.video = null;
+    this.stream = null;
+    this.animationId = null;
+    this.isPlaying = false;
+    
+    // 绑定事件处理函数
+    this.render = this.render.bind(this);
+  }
+  
+  setStream(stream) {
+    this.stream = stream;
+    
+    // 创建隐藏的video元素来解码视频流
+    if (this.video) {
+      this.video.remove();
+    }
+    
+    this.video = document.createElement('video');
+    this.video.style.display = 'none';
+    this.video.autoplay = true;
+    this.video.playsinline = true;
+    this.video.muted = true;
+    document.body.appendChild(this.video);
+    
+    this.video.srcObject = stream;
+    
+    this.video.addEventListener('loadedmetadata', () => {
+      console.log(`[Canvas渲染器] 视频元数据加载完成: ${this.video.videoWidth}x${this.video.videoHeight}`);
+      this.updateCanvasSize();
+    });
+    
+    this.video.addEventListener('play', () => {
+      console.log('[Canvas渲染器] 视频开始播放');
+      this.isPlaying = true;
+      this.startRendering();
+      
+      // 触发自定义播放事件
+      this.canvas.dispatchEvent(new Event('playing'));
+    });
+    
+    this.video.addEventListener('pause', () => {
+      console.log('[Canvas渲染器] 视频暂停');
+      this.isPlaying = false;
+      this.stopRendering();
+    });
+  }
+  
+  updateCanvasSize() {
+    if (this.video && this.video.videoWidth && this.video.videoHeight) {
+      // 保持宽高比的同时调整canvas尺寸
+      const aspectRatio = this.video.videoWidth / this.video.videoHeight;
+      const containerWidth = this.canvas.parentElement.clientWidth;
+      const containerHeight = this.canvas.parentElement.clientHeight;
+      const containerAspectRatio = containerWidth / containerHeight;
+      
+      if (aspectRatio > containerAspectRatio) {
+        // 视频比容器宽，以宽度为准
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = 'auto';
+      } else {
+        // 视频比容器高，以高度为准
+        this.canvas.style.width = 'auto';
+        this.canvas.style.height = '100%';
+      }
+      
+      // 设置实际渲染尺寸
+      this.canvas.width = this.video.videoWidth;
+      this.canvas.height = this.video.videoHeight;
+      
+      console.log(`[Canvas渲染器] 画布尺寸调整为: ${this.canvas.width}x${this.canvas.height}`);
+    }
+  }
+  
+  startRendering() {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+    }
+    this.render();
+  }
+  
+  stopRendering() {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+  
+  render() {
+    if (!this.isPlaying || !this.video || this.video.readyState < 2) {
+      this.animationId = requestAnimationFrame(this.render);
+      return;
+    }
+    
+    try {
+      // 将视频帧绘制到canvas上
+      this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+    } catch (error) {
+      console.warn('[Canvas渲染器] 绘制帧失败:', error);
+    }
+    
+    this.animationId = requestAnimationFrame(this.render);
+  }
+  
+  get videoWidth() {
+    return this.video ? this.video.videoWidth : this.canvas.width;
+  }
+  
+  get videoHeight() {
+    return this.video ? this.video.videoHeight : this.canvas.height;
+  }
+  
+  destroy() {
+    this.stopRendering();
+    if (this.video) {
+      this.video.srcObject = null;
+      this.video.remove();
+      this.video = null;
+    }
+    this.stream = null;
+  }
+}
+
+/**
  * SignalClient 类负责与信令服务器的 WebSocket 通信
  */
 class SignalClient extends EventTarget {
@@ -85,6 +214,9 @@ class ScreenShareApp {
     this.handleGlobalMouseMove = this.handleGlobalMouseMove.bind(this);
     this.handleCursorVisibilityChanged = this.handleCursorVisibilityChanged.bind(this);
 
+    // Canvas视频渲染器
+    this.canvasRenderer = null;
+
     this.initDomElements();
     this.bindUIEvents();
     this.initAppAndConnect();
@@ -113,7 +245,7 @@ class ScreenShareApp {
       participantsList: document.getElementById('participantsList'),
       participantCount: document.getElementById('participantCount'),
       onlineUsersList: document.getElementById('onlineUsersList'),
-      remoteVideo: document.getElementById('remoteVideo'),
+      remoteCanvas: document.getElementById('remoteCanvas'),
       videoOverlay: document.getElementById('videoOverlay'),
       // Status
       connectionStatus: document.getElementById('connectionStatus'),
@@ -138,6 +270,11 @@ class ScreenShareApp {
       // Pointer lock elements
       pointerLockHint: document.getElementById('pointerLockHint'),
     };
+    
+    // 初始化canvas渲染器
+    if (this.dom.remoteCanvas) {
+      this.canvasRenderer = new CanvasVideoRenderer(this.dom.remoteCanvas);
+    }
     
     window.app = this; // 方便控制台调试
   }
@@ -184,23 +321,21 @@ class ScreenShareApp {
       }
     }
     
-    if (this.dom.remoteVideo) {
-        // 禁用视频控件和默认行为
-        this.dom.remoteVideo.controls = false;
-        this.dom.remoteVideo.disablePictureInPicture = true;
-        this.dom.remoteVideo.setAttribute('playsinline', 'true');
-        
-        // 鼠标事件已改为直接获取鼠标信息的方式，不再使用DOM事件
-        
-        // 视频元素基本设置
-        this.dom.remoteVideo.tabIndex = 0; // 使视频元素可以获得焦点
+    if (this.dom.remoteCanvas) {
+        // Canvas元素基本设置
+        this.dom.remoteCanvas.tabIndex = 0; // 使canvas元素可以获得焦点
         
         // 禁用选择和拖拽
-        this.dom.remoteVideo.style.userSelect = 'none';
-        this.dom.remoteVideo.style.webkitUserSelect = 'none';
-        this.dom.remoteVideo.style.pointerEvents = 'auto';
+        this.dom.remoteCanvas.style.userSelect = 'none';
+        this.dom.remoteCanvas.style.webkitUserSelect = 'none';
+        this.dom.remoteCanvas.style.pointerEvents = 'auto';
+        
+        // 设置canvas样式
+        this.dom.remoteCanvas.style.maxWidth = '100%';
+        this.dom.remoteCanvas.style.maxHeight = '100%';
+        this.dom.remoteCanvas.style.objectFit = 'contain';
     } else {
-        console.error(`[UI BINDING] 关键元素未找到: #remoteVideo`);
+        console.error(`[UI BINDING] 关键元素未找到: #remoteCanvas`);
     }
     
     // 绑定虚拟键盘事件
@@ -209,23 +344,23 @@ class ScreenShareApp {
     // 绑定全屏事件
     this.bindFullscreenEvents();
     
-         // 绑定视频容器点击事件（用于启用指针锁定）
-     if (this.dom.videoContainer) {
-       this.dom.videoContainer.addEventListener('click', () => {
+         // 绑定Canvas点击事件（用于启用指针锁定）
+     if (this.dom.remoteCanvas) {
+       this.dom.remoteCanvas.addEventListener('click', () => {
          if (this.isControlEnabled && !this.globalMouseMode && !document.pointerLockElement) {
            this.enablePointerLock();
          }
        });
        
        // 鼠标进入时显示提示
-       this.dom.videoContainer.addEventListener('mouseenter', () => {
+       this.dom.remoteCanvas.addEventListener('mouseenter', () => {
          if (this.isControlEnabled && !this.globalMouseMode && !document.pointerLockElement && this.dom.pointerLockHint) {
            this.dom.pointerLockHint.classList.add('show');
          }
        });
        
        // 鼠标离开时隐藏提示
-       this.dom.videoContainer.addEventListener('mouseleave', () => {
+       this.dom.remoteCanvas.addEventListener('mouseleave', () => {
          if (this.dom.pointerLockHint) {
            this.dom.pointerLockHint.classList.remove('show');
          }
@@ -650,14 +785,18 @@ class ScreenShareApp {
       this.signal.send({ type: 'ice-candidate', to: hostId, from: this.userId, data: candidate });
     });
     p2p.addEventListener('stream', ({ detail: stream }) => {
-      this.dom.remoteVideo.srcObject = stream;
+      if (this.canvasRenderer) {
+        this.canvasRenderer.setStream(stream);
+        
+        // 监听canvas的playing事件
+        this.dom.remoteCanvas.addEventListener('playing', () => {
+          this.dom.videoOverlay.style.display = 'none';
+        });
+      }
+      
       this.showPanel('screenView');
       const host = this.allUsers.get(hostId);
       this.dom.viewTitle.textContent = `正在观看 ${host?.name || hostId} 的屏幕`;
-
-      this.dom.remoteVideo.onplaying = () => {
-        this.dom.videoOverlay.style.display = 'none';
-      };
       
       // 初始化时禁用控制按钮，等待屏幕信息就绪
       if (this.dom.toggleControl) {
@@ -720,8 +859,12 @@ class ScreenShareApp {
 
     this.p2pConnections.forEach(conn => conn.close());
     this.p2pConnections.clear();
-    this.dom.remoteVideo.srcObject = null;
-    this.dom.remoteVideo.onplaying = null; // 清理事件监听器
+    
+    // 清理canvas渲染器
+    if (this.canvasRenderer) {
+      this.canvasRenderer.destroy();
+    }
+    
     this.showPanel('guestPanel');
 
     // 重置遮罩层状态，为下次连接做准备
@@ -822,7 +965,7 @@ class ScreenShareApp {
     this.isControlEnabled = !this.isControlEnabled;
     
     if (this.isControlEnabled) {
-      this.dom.remoteVideo.style.cursor = 'crosshair';
+      this.dom.remoteCanvas.style.cursor = 'crosshair';
       this.enableGlobalKeyboardControl();
       this.updateAppStatus('远程控制已启用 - 可以控制远程桌面');
     } else {
@@ -833,7 +976,7 @@ class ScreenShareApp {
         await this.disablePointerLock();
       }
       
-      this.dom.remoteVideo.style.cursor = '';
+      this.dom.remoteCanvas.style.cursor = '';
       this.disableGlobalKeyboardControl();
       this.updateAppStatus('远程控制已禁用');
     }
@@ -1693,9 +1836,9 @@ class ScreenShareApp {
 
   // 隐藏视频区域的原生光标
   hideVideoAreaCursor() {
-    if (this.dom.remoteVideo) {
-      this.dom.remoteVideo.style.cursor = 'none';
-      this.dom.remoteVideo.parentElement.style.cursor = 'none';
+    if (this.dom.remoteCanvas) {
+      this.dom.remoteCanvas.style.cursor = 'none';
+      this.dom.remoteCanvas.parentElement.style.cursor = 'none';
     }
     
     // 添加全局鼠标模式标记（用于样式控制，但不隐藏整个页面光标）
@@ -1704,9 +1847,9 @@ class ScreenShareApp {
 
   // 显示视频区域的原生光标
   showVideoAreaCursor() {
-    if (this.dom.remoteVideo) {
-      this.dom.remoteVideo.style.cursor = '';
-      this.dom.remoteVideo.parentElement.style.cursor = '';
+    if (this.dom.remoteCanvas) {
+      this.dom.remoteCanvas.style.cursor = '';
+      this.dom.remoteCanvas.parentElement.style.cursor = '';
     }
     
     // 移除全局鼠标模式标记
@@ -1720,7 +1863,7 @@ class ScreenShareApp {
     const { x, y, previousX, previousY, timestamp } = data;
     
     // 检查鼠标是否在视频区域内
-    const videoRect = this.dom.remoteVideo.getBoundingClientRect();
+    const videoRect = this.dom.remoteCanvas.getBoundingClientRect();
     const relativeX = x - videoRect.left;
     const relativeY = y - videoRect.top;
     
@@ -1742,14 +1885,14 @@ class ScreenShareApp {
 
   // 计算全局鼠标坐标到视频坐标的转换
   calculateGlobalMouseToVideoCoords(relativeX, relativeY) {
-    const video = this.dom.remoteVideo;
-    
-    if (!video.videoWidth || !video.videoHeight) {
+    if (!this.canvasRenderer || !this.canvasRenderer.videoWidth || !this.canvasRenderer.videoHeight) {
       return { x: 0, y: 0, valid: false };
     }
     
-    const rect = video.getBoundingClientRect();
-    const videoAspectRatio = video.videoWidth / video.videoHeight;
+    const canvas = this.dom.remoteCanvas;
+    
+    const rect = canvas.getBoundingClientRect();
+    const videoAspectRatio = this.canvasRenderer.videoWidth / this.canvasRenderer.videoHeight;
     const containerAspectRatio = rect.width / rect.height;
     
     // 计算视频在容器中的实际显示区域
@@ -1779,8 +1922,8 @@ class ScreenShareApp {
     }
     
     // 转换为视频原始分辨率的坐标
-    const scaleX = video.videoWidth / videoDisplayWidth;
-    const scaleY = video.videoHeight / videoDisplayHeight;
+    const scaleX = this.canvasRenderer.videoWidth / videoDisplayWidth;
+    const scaleY = this.canvasRenderer.videoHeight / videoDisplayHeight;
     
     let x = videoRelativeX * scaleX;
     let y = videoRelativeY * scaleY;
@@ -1823,8 +1966,8 @@ class ScreenShareApp {
       globalPosition: { x: globalData.x, y: globalData.y },
       clientPlatform: window.electronAPI.platform,
       videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
+        width: this.canvasRenderer ? this.canvasRenderer.videoWidth : 0,
+        height: this.canvasRenderer ? this.canvasRenderer.videoHeight : 0
       },
       screenInfo: screenInfo,
       source: 'global-mouse' // 标记来源
@@ -1866,32 +2009,32 @@ class ScreenShareApp {
   // 新增：启用指针锁定
   async enablePointerLock() {
     try {
-      if (!this.dom.videoContainer) {
-        console.error('[指针锁定] 视频容器不存在');
+      if (!this.dom.remoteCanvas) {
+        console.error('[指针锁定] Canvas不存在');
         return;
       }
 
       // 请求指针锁定
-      const requestPointerLock = this.dom.videoContainer.requestPointerLock || 
-                                this.dom.videoContainer.mozRequestPointerLock || 
-                                this.dom.videoContainer.webkitRequestPointerLock;
+      const requestPointerLock = this.dom.remoteCanvas.requestPointerLock || 
+                                this.dom.remoteCanvas.mozRequestPointerLock || 
+                                this.dom.remoteCanvas.webkitRequestPointerLock;
 
       if (requestPointerLock) {
-        await requestPointerLock.call(this.dom.videoContainer);
+        await requestPointerLock.call(this.dom.remoteCanvas);
                  console.log('[指针锁定] 已启用');
          
          // 绑定指针锁定事件
          this.bindPointerLockEvents();
          
          // 添加指针锁定样式
-         this.dom.videoContainer.classList.add('pointer-locked');
+         this.dom.remoteCanvas.classList.add('pointer-locked');
          
          // 隐藏提示
          if (this.dom.pointerLockHint) {
            this.dom.pointerLockHint.classList.remove('show');
          }
          
-         this.updateAppStatus('指针锁定已启用 - 鼠标被限制在视频区域内');
+         this.updateAppStatus('指针锁定已启用 - 鼠标被限制在Canvas区域内');
       } else {
         console.warn('[指针锁定] 浏览器不支持Pointer Lock API');
         this.updateAppStatus('浏览器不支持指针锁定，使用普通模式');
@@ -1914,8 +2057,8 @@ class ScreenShareApp {
       }
 
              // 移除指针锁定样式
-       if (this.dom.videoContainer) {
-         this.dom.videoContainer.classList.remove('pointer-locked');
+       if (this.dom.remoteCanvas) {
+         this.dom.remoteCanvas.classList.remove('pointer-locked');
        }
 
        // 移除指针锁定事件
@@ -1931,7 +2074,7 @@ class ScreenShareApp {
   bindPointerLockEvents() {
          // 指针锁定状态变化监听
      this.pointerLockChangeHandler = () => {
-       const isLocked = document.pointerLockElement === this.dom.videoContainer;
+       const isLocked = document.pointerLockElement === this.dom.remoteCanvas;
        console.log('[指针锁定] 状态变化:', isLocked ? '已锁定' : '已解锁');
        
        if (!isLocked && this.isControlEnabled) {
@@ -1994,10 +2137,10 @@ class ScreenShareApp {
     document.addEventListener('mozpointerlockerror', this.pointerLockErrorHandler);
     document.addEventListener('webkitpointerlockerror', this.pointerLockErrorHandler);
     
-         if (this.dom.videoContainer) {
-       this.dom.videoContainer.addEventListener('mousemove', this.pointerLockMouseMoveHandler, { passive: false });
-       // 在指针锁定模式下，为视频容器添加键盘事件监听（用于处理ESC键）
-       this.dom.videoContainer.addEventListener('keydown', this.pointerLockKeyDownHandler, { passive: false });
+         if (this.dom.remoteCanvas) {
+       this.dom.remoteCanvas.addEventListener('mousemove', this.pointerLockMouseMoveHandler, { passive: false });
+       // 在指针锁定模式下，为Canvas添加键盘事件监听（用于处理ESC键）
+       this.dom.remoteCanvas.addEventListener('keydown', this.pointerLockKeyDownHandler, { passive: false });
      }
   }
 
@@ -2015,12 +2158,12 @@ class ScreenShareApp {
       document.removeEventListener('webkitpointerlockerror', this.pointerLockErrorHandler);
     }
 
-         if (this.pointerLockMouseMoveHandler && this.dom.videoContainer) {
-       this.dom.videoContainer.removeEventListener('mousemove', this.pointerLockMouseMoveHandler);
+         if (this.pointerLockMouseMoveHandler && this.dom.remoteCanvas) {
+       this.dom.remoteCanvas.removeEventListener('mousemove', this.pointerLockMouseMoveHandler);
      }
 
-     if (this.pointerLockKeyDownHandler && this.dom.videoContainer) {
-       this.dom.videoContainer.removeEventListener('keydown', this.pointerLockKeyDownHandler);
+     if (this.pointerLockKeyDownHandler && this.dom.remoteCanvas) {
+       this.dom.remoteCanvas.removeEventListener('keydown', this.pointerLockKeyDownHandler);
      }
 
      // 清理引用
@@ -2035,10 +2178,10 @@ class ScreenShareApp {
     // 累积相对移动量到虚拟鼠标位置
     if (!this.virtualMousePosition) {
       // 初始化虚拟鼠标位置为视频中心
-      const videoRect = this.dom.remoteVideo.getBoundingClientRect();
+      const canvasRect = this.dom.remoteCanvas.getBoundingClientRect();
       this.virtualMousePosition = {
-        x: videoRect.width / 2,
-        y: videoRect.height / 2
+        x: canvasRect.width / 2,
+        y: canvasRect.height / 2
       };
     }
 
@@ -2047,9 +2190,9 @@ class ScreenShareApp {
     this.virtualMousePosition.y += movementY;
 
     // 限制在视频边界内
-    const videoRect = this.dom.remoteVideo.getBoundingClientRect();
-    this.virtualMousePosition.x = Math.max(0, Math.min(videoRect.width, this.virtualMousePosition.x));
-    this.virtualMousePosition.y = Math.max(0, Math.min(videoRect.height, this.virtualMousePosition.y));
+    const canvasRect = this.dom.remoteCanvas.getBoundingClientRect();
+    this.virtualMousePosition.x = Math.max(0, Math.min(canvasRect.width, this.virtualMousePosition.x));
+    this.virtualMousePosition.y = Math.max(0, Math.min(canvasRect.height, this.virtualMousePosition.y));
 
     // 转换为远程坐标并发送
     const coords = this.calculateVideoToRemoteCoords(this.virtualMousePosition.x, this.virtualMousePosition.y);
@@ -2061,14 +2204,13 @@ class ScreenShareApp {
 
   // 新增：计算视频坐标到远程坐标的转换（复用现有逻辑）
   calculateVideoToRemoteCoords(videoX, videoY) {
-    const video = this.dom.remoteVideo;
-    
-    if (!video.videoWidth || !video.videoHeight) {
+    if (!this.canvasRenderer || !this.canvasRenderer.videoWidth || !this.canvasRenderer.videoHeight) {
       return { x: 0, y: 0, valid: false };
     }
     
-    const rect = video.getBoundingClientRect();
-    const videoAspectRatio = video.videoWidth / video.videoHeight;
+    const canvas = this.dom.remoteCanvas;
+    const rect = canvas.getBoundingClientRect();
+    const videoAspectRatio = this.canvasRenderer.videoWidth / this.canvasRenderer.videoHeight;
     const containerAspectRatio = rect.width / rect.height;
     
     // 计算视频在容器中的实际显示区域
@@ -2098,8 +2240,8 @@ class ScreenShareApp {
     }
     
     // 转换为视频原始分辨率的坐标
-    const scaleX = video.videoWidth / videoDisplayWidth;
-    const scaleY = video.videoHeight / videoDisplayHeight;
+    const scaleX = this.canvasRenderer.videoWidth / videoDisplayWidth;
+    const scaleY = this.canvasRenderer.videoHeight / videoDisplayHeight;
     
     let x = videoRelativeX * scaleX;
     let y = videoRelativeY * scaleY;
@@ -2141,8 +2283,8 @@ class ScreenShareApp {
       y: coords.y,
       clientPlatform: window.electronAPI.platform,
       videoResolution: {
-        width: this.dom.remoteVideo.videoWidth,
-        height: this.dom.remoteVideo.videoHeight
+        width: this.canvasRenderer ? this.canvasRenderer.videoWidth : 0,
+        height: this.canvasRenderer ? this.canvasRenderer.videoHeight : 0
       },
       screenInfo: screenInfo,
       source: 'pointer-lock', // 标记来源
