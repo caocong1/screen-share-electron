@@ -289,7 +289,16 @@ parentPort.on("message", (message) => {
 				break;
 			}
 
-			case "scroll":
+			case "scroll": {
+				console.log("[Robot Worker] 收到滚轮事件:", {
+					deltaX: data.deltaX,
+					deltaY: data.deltaY,
+					deltaMode: data.deltaMode,
+					x: data.x,
+					y: data.y,
+					所有数据: data,
+				});
+
 				// 修复滚轮事件处理
 				if (
 					typeof data.deltaX === "number" ||
@@ -299,48 +308,61 @@ parentPort.on("message", (message) => {
 					let scrollX = 0;
 					let scrollY = 0;
 
-					// 处理 deltaY（垂直滚动）
+					// 处理 deltaY（垂直滚动）- 增大滚动量以确保效果明显
 					if (typeof data.deltaY === "number" && data.deltaY !== 0) {
-						// 根据 deltaMode 调整滚动量
+						// 根据 deltaMode 调整滚动量，增加倍数
 						if (data.deltaMode === 0) {
 							// DOM_DELTA_PIXEL - 像素模式
-							scrollY = Math.round(data.deltaY / 10); // 减小滚动量
+							scrollY = Math.round(data.deltaY / 3); // 增大滚动量
 						} else if (data.deltaMode === 1) {
 							// DOM_DELTA_LINE - 行模式
-							scrollY = Math.round(data.deltaY);
+							scrollY = Math.round(data.deltaY * 3); // 放大滚动量
 						} else if (data.deltaMode === 2) {
 							// DOM_DELTA_PAGE - 页面模式
-							scrollY = Math.round(data.deltaY * 10);
+							scrollY = Math.round(data.deltaY * 20);
 						} else {
-							scrollY = Math.round(data.deltaY / 10);
+							scrollY = Math.round(data.deltaY / 3);
 						}
 					}
 
 					// 处理 deltaX（水平滚动）
 					if (typeof data.deltaX === "number" && data.deltaX !== 0) {
 						if (data.deltaMode === 0) {
-							scrollX = Math.round(data.deltaX / 10);
+							scrollX = Math.round(data.deltaX / 3);
 						} else if (data.deltaMode === 1) {
-							scrollX = Math.round(data.deltaX);
+							scrollX = Math.round(data.deltaX * 3);
 						} else if (data.deltaMode === 2) {
-							scrollX = Math.round(data.deltaX * 10);
+							scrollX = Math.round(data.deltaX * 20);
 						} else {
-							scrollX = Math.round(data.deltaX / 10);
+							scrollX = Math.round(data.deltaX / 3);
 						}
+					}
+
+					// 确保最小滚动量
+					if (scrollX !== 0 && Math.abs(scrollX) < 1) {
+						scrollX = scrollX > 0 ? 1 : -1;
+					}
+					if (scrollY !== 0 && Math.abs(scrollY) < 1) {
+						scrollY = scrollY > 0 ? 1 : -1;
 					}
 
 					// 执行滚动
 					if (scrollX !== 0 || scrollY !== 0) {
-						robot.scrollMouse(scrollX, scrollY);
-						console.log("[Robot Worker] 滚轮操作成功:", {
-							原始: {
-								deltaX: data.deltaX,
-								deltaY: data.deltaY,
-								deltaMode: data.deltaMode,
-							},
-							处理后: { scrollX, scrollY },
-							执行结果: "已调用robot.scrollMouse",
-						});
+						try {
+							robot.scrollMouse(scrollX, scrollY);
+							console.log("[Robot Worker] 滚轮操作成功:", {
+								原始: {
+									deltaX: data.deltaX,
+									deltaY: data.deltaY,
+									deltaMode: data.deltaMode,
+								},
+								处理后: { scrollX, scrollY },
+								平台: process.platform,
+								执行结果: "已调用robot.scrollMouse",
+							});
+						} catch (error) {
+							console.error("[Robot Worker] 滚轮操作失败:", error);
+						}
 					} else {
 						console.log("[Robot Worker] 滚轮操作跳过:", {
 							原始: {
@@ -352,17 +374,31 @@ parentPort.on("message", (message) => {
 						});
 					}
 				} else if (typeof data.x === "number" || typeof data.y === "number") {
-					// 兜底逻辑：使用处理过的 x/y 值
-					const fallbackX = Math.round(data.x || 0);
-					const fallbackY = Math.round(data.y || 0);
-					robot.scrollMouse(fallbackX, fallbackY);
-					console.log("[Robot Worker] 滚轮兜底处理:", {
-						使用兜底逻辑: true,
-						原始x: data.x,
-						原始y: data.y,
-						处理后: { fallbackX, fallbackY },
-						执行结果: "已调用robot.scrollMouse",
-					});
+					// 兜底逻辑：使用处理过的 x/y 值，增大滚动量
+					let fallbackX = Math.round((data.x || 0) * 5); // 增大倍数
+					let fallbackY = Math.round((data.y || 0) * 5); // 增大倍数
+
+					// 确保最小滚动量
+					if (fallbackX !== 0 && Math.abs(fallbackX) < 2) {
+						fallbackX = fallbackX > 0 ? 2 : -2;
+					}
+					if (fallbackY !== 0 && Math.abs(fallbackY) < 2) {
+						fallbackY = fallbackY > 0 ? 2 : -2;
+					}
+
+					try {
+						robot.scrollMouse(fallbackX, fallbackY);
+						console.log("[Robot Worker] 滚轮兜底处理:", {
+							使用兜底逻辑: true,
+							原始x: data.x,
+							原始y: data.y,
+							处理后: { fallbackX, fallbackY },
+							平台: process.platform,
+							执行结果: "已调用robot.scrollMouse",
+						});
+					} catch (error) {
+						console.error("[Robot Worker] 滚轮兜底操作失败:", error);
+					}
 				} else {
 					console.log("[Robot Worker] 滚轮事件无数据:", {
 						data: data,
@@ -370,6 +406,7 @@ parentPort.on("message", (message) => {
 					});
 				}
 				break;
+			}
 
 			case "gesturestart":
 			case "gesturechange":

@@ -1806,18 +1806,16 @@ class ScreenShareApp {
 				mode: "normal",
 			});
 			if (coords.valid) {
-				// 转换滚轮增量为标准化的滚动值
-				const scrollX = event.deltaX * 0.1; // 水平滚动（触摸板）
-				const scrollY = event.deltaY * 0.1; // 垂直滚动
-
+				// 发送原始的delta值，让后端处理
 				this.sendMouseCommand("scroll", coords, {
-					x: scrollX,
-					y: scrollY,
 					deltaX: event.deltaX,
 					deltaY: event.deltaY,
 					deltaZ: event.deltaZ,
 					deltaMode: event.deltaMode,
 					source: "canvas-normal",
+					// 保留转换后的值作为备份
+					x: event.deltaX * 0.1,
+					y: event.deltaY * 0.1,
 				});
 			}
 		};
@@ -2226,18 +2224,16 @@ class ScreenShareApp {
 				);
 
 				if (coords.valid) {
-					// 转换滚轮增量为标准化的滚动值
-					const scrollX = event.deltaX * 0.1; // 水平滚动（触摸板）
-					const scrollY = event.deltaY * 0.1; // 垂直滚动
-
+					// 发送原始的delta值，让后端处理
 					this.sendMouseCommand("scroll", coords, {
-						x: scrollX,
-						y: scrollY,
 						deltaX: event.deltaX,
 						deltaY: event.deltaY,
 						deltaZ: event.deltaZ,
 						deltaMode: event.deltaMode,
 						source: "pointer-lock",
+						// 保留转换后的值作为备份
+						x: event.deltaX * 0.1,
+						y: event.deltaY * 0.1,
 					});
 				}
 			}
