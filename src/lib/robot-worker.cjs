@@ -308,48 +308,74 @@ parentPort.on("message", (message) => {
 					let scrollX = 0;
 					let scrollY = 0;
 
-					// 处理 deltaY（垂直滚动）- 增大滚动量以确保效果明显
+					// 处理 deltaY（垂直滚动）- 大幅增大滚动量以确保效果明显
 					if (typeof data.deltaY === "number" && data.deltaY !== 0) {
-						// 根据 deltaMode 调整滚动量，增加倍数
+						// 根据 deltaMode 调整滚动量，进一步增加倍数
 						if (data.deltaMode === 0) {
-							// DOM_DELTA_PIXEL - 像素模式
-							scrollY = Math.round(data.deltaY / 3); // 增大滚动量
+							// DOM_DELTA_PIXEL - 像素模式，增大滚动量
+							scrollY = Math.round(data.deltaY / 2); // 从/3改为/2
 						} else if (data.deltaMode === 1) {
-							// DOM_DELTA_LINE - 行模式
-							scrollY = Math.round(data.deltaY * 3); // 放大滚动量
+							// DOM_DELTA_LINE - 行模式，放大滚动量
+							scrollY = Math.round(data.deltaY * 5); // 从*3改为*5
 						} else if (data.deltaMode === 2) {
 							// DOM_DELTA_PAGE - 页面模式
-							scrollY = Math.round(data.deltaY * 20);
+							scrollY = Math.round(data.deltaY * 30); // 从*20改为*30
 						} else {
-							scrollY = Math.round(data.deltaY / 3);
+							scrollY = Math.round(data.deltaY / 2); // 从/3改为/2
 						}
 					}
 
-					// 处理 deltaX（水平滚动）
+					// 处理 deltaX（水平滚动）- 增大滚动量
 					if (typeof data.deltaX === "number" && data.deltaX !== 0) {
 						if (data.deltaMode === 0) {
-							scrollX = Math.round(data.deltaX / 3);
+							scrollX = Math.round(data.deltaX / 2); // 从/3改为/2
 						} else if (data.deltaMode === 1) {
-							scrollX = Math.round(data.deltaX * 3);
+							scrollX = Math.round(data.deltaX * 5); // 从*3改为*5
 						} else if (data.deltaMode === 2) {
-							scrollX = Math.round(data.deltaX * 20);
+							scrollX = Math.round(data.deltaX * 30); // 从*20改为*30
 						} else {
-							scrollX = Math.round(data.deltaX / 3);
+							scrollX = Math.round(data.deltaX / 2); // 从/3改为/2
 						}
 					}
 
-					// 确保最小滚动量
-					if (scrollX !== 0 && Math.abs(scrollX) < 1) {
-						scrollX = scrollX > 0 ? 1 : -1;
+					// 确保最小滚动量 - Windows需要更大的滚动量
+					const minScrollAmount = process.platform === "win32" ? 3 : 1;
+					if (scrollX !== 0 && Math.abs(scrollX) < minScrollAmount) {
+						scrollX = scrollX > 0 ? minScrollAmount : -minScrollAmount;
 					}
-					if (scrollY !== 0 && Math.abs(scrollY) < 1) {
-						scrollY = scrollY > 0 ? 1 : -1;
+					if (scrollY !== 0 && Math.abs(scrollY) < minScrollAmount) {
+						scrollY = scrollY > 0 ? minScrollAmount : -minScrollAmount;
 					}
 
 					// 执行滚动
 					if (scrollX !== 0 || scrollY !== 0) {
 						try {
-							robot.scrollMouse(scrollX, scrollY);
+							// Windows平台使用增强的滚动处理
+							if (process.platform === "win32") {
+								// 主滚动调用
+								robot.scrollMouse(scrollX, scrollY);
+
+								// 额外的增强滚动（如果scrollY较大，分解为多次小滚动）
+								if (Math.abs(scrollY) > 3) {
+									const extraSteps = Math.min(
+										Math.floor(Math.abs(scrollY) / 3),
+										3,
+									);
+									const extraDirection = scrollY > 0 ? 1 : -1;
+									for (let i = 0; i < extraSteps; i++) {
+										setTimeout(
+											() => {
+												robot.scrollMouse(0, extraDirection);
+											},
+											(i + 1) * 15,
+										);
+									}
+								}
+							} else {
+								// 其他平台标准滚动
+								robot.scrollMouse(scrollX, scrollY);
+							}
+
 							console.log("[Robot Worker] 滚轮操作成功:", {
 								原始: {
 									deltaX: data.deltaX,
@@ -358,6 +384,7 @@ parentPort.on("message", (message) => {
 								},
 								处理后: { scrollX, scrollY },
 								平台: process.platform,
+								增强处理: process.platform === "win32" && Math.abs(scrollY) > 3,
 								执行结果: "已调用robot.scrollMouse",
 							});
 						} catch (error) {
@@ -374,26 +401,47 @@ parentPort.on("message", (message) => {
 						});
 					}
 				} else if (typeof data.x === "number" || typeof data.y === "number") {
-					// 兜底逻辑：使用处理过的 x/y 值，增大滚动量
-					let fallbackX = Math.round((data.x || 0) * 5); // 增大倍数
-					let fallbackY = Math.round((data.y || 0) * 5); // 增大倍数
+					// 兜底逻辑：使用处理过的 x/y 值，大幅增大滚动量
+					let fallbackX = Math.round((data.x || 0) * 20); // 大幅增大倍数
+					let fallbackY = Math.round((data.y || 0) * 20); // 大幅增大倍数
 
-					// 确保最小滚动量
-					if (fallbackX !== 0 && Math.abs(fallbackX) < 2) {
-						fallbackX = fallbackX > 0 ? 2 : -2;
+					// 确保最小滚动量 - Windows需要更大的滚动量
+					const minScroll = process.platform === "win32" ? 5 : 3;
+					if (fallbackX !== 0 && Math.abs(fallbackX) < minScroll) {
+						fallbackX = fallbackX > 0 ? minScroll : -minScroll;
 					}
-					if (fallbackY !== 0 && Math.abs(fallbackY) < 2) {
-						fallbackY = fallbackY > 0 ? 2 : -2;
+					if (fallbackY !== 0 && Math.abs(fallbackY) < minScroll) {
+						fallbackY = fallbackY > 0 ? minScroll : -minScroll;
 					}
 
 					try {
-						robot.scrollMouse(fallbackX, fallbackY);
+						// Windows平台尝试多种滚动方式
+						if (process.platform === "win32") {
+							// 方法1：标准滚动
+							robot.scrollMouse(fallbackX, fallbackY);
+
+							// 方法2：如果标准滚动效果不明显，尝试多次小幅滚动
+							if (Math.abs(fallbackY) > 0) {
+								const steps = Math.abs(fallbackY);
+								const direction = fallbackY > 0 ? 1 : -1;
+								for (let i = 0; i < Math.min(steps, 5); i++) {
+									setTimeout(() => {
+										robot.scrollMouse(0, direction);
+									}, i * 10);
+								}
+							}
+						} else {
+							// 其他平台使用标准滚动
+							robot.scrollMouse(fallbackX, fallbackY);
+						}
+
 						console.log("[Robot Worker] 滚轮兜底处理:", {
 							使用兜底逻辑: true,
 							原始x: data.x,
 							原始y: data.y,
 							处理后: { fallbackX, fallbackY },
 							平台: process.platform,
+							特殊处理: process.platform === "win32" ? "多次滚动" : "标准滚动",
 							执行结果: "已调用robot.scrollMouse",
 						});
 					} catch (error) {
