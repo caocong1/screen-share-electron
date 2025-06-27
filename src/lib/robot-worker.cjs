@@ -14,19 +14,35 @@ if (isMainThread) {
 	throw new Error("此文件应该作为worker线程运行");
 }
 
-let mouse, keyboard, Point, Key, Button, sleep;
+let mouse, keyboard, Point, Key, Button, sleep, straightTo;
 try {
 	const nut = require("@nut-tree/nut-js");
-	mouse = nut.mouse;
-	keyboard = nut.keyboard;
+	
+	// 在nut.js v4中，需要通过providerRegistry获取实际的操作对象
+	mouse = nut.mouse.providerRegistry.getMouse();
+	keyboard = nut.keyboard.providerRegistry.getKeyboard();
 	Point = nut.Point;
 	Key = nut.Key;
 	Button = nut.Button;
 	sleep = nut.sleep;
+	straightTo = nut.straightTo; // 用于鼠标移动路径
+	
+	// 验证nut.js对象是否正确初始化
+	if (!mouse || !keyboard || !Point || !Key || !Button) {
+		throw new Error("Nut.js 对象初始化不完整");
+	}
+	
+	// 验证mouse对象的方法是否存在
+	if (typeof mouse.leftClick !== 'function' || typeof mouse.rightClick !== 'function' || 
+		typeof mouse.middleClick !== 'function' || typeof mouse.setMousePosition !== 'function') {
+		throw new Error("Mouse 对象方法不完整");
+	}
 	
 	// 优化nut.js性能设置
-	mouse.config.mouseSpeed = 1000; // 鼠标移动速度
-	keyboard.config.autoDelayMs = 5; // 键盘延迟
+	nut.mouse.config.mouseSpeed = 1000; // 鼠标移动速度
+	nut.keyboard.config.autoDelayMs = 5; // 键盘延迟
+	
+	console.log("[Nut Worker] Nut.js 初始化成功");
 } catch (error) {
 	console.error("[Nut Worker] Nut.js 不可用:", error.message);
 	parentPort.postMessage({
@@ -58,7 +74,7 @@ async function processPendingMouseMoves() {
 	// 执行实际的鼠标移动
 	try {
 		const coords = transformCoordinates(latestMove.data);
-		await mouse.move([new Point(coords.x, coords.y)]);
+		await mouse.setMousePosition(new Point(coords.x, coords.y));
 		mouseMoveBuffer.lastProcessTime = Date.now();
 
 		// 发送处理完成确认
@@ -154,8 +170,11 @@ function transformCoordinates(data) {
  * 主要的消息处理器
  */
 parentPort.on("message", async (message) => {
+	let data = null; // 在外部声明data变量，确保在catch块中可用
+	
 	try {
-		const { type, data } = message;
+		const { type, data: messageData } = message;
+		data = messageData; // 赋值给外部变量
 
 		// 处理远程控制命令
 		switch (data.type) {
@@ -181,18 +200,18 @@ parentPort.on("message", async (message) => {
 						原始: { x: data.x, y: data.y },
 						转换后: coords,
 					});
-					await mouse.move([new Point(coords.x, coords.y)]);
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const downButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? Button.Left
+							? Button.LEFT
 							: data.button === 1
-								? Button.Middle
-								: Button.Right
-						: Button.Left;
-				await mouse.press(downButton);
+								? Button.MIDDLE
+								: Button.RIGHT
+						: Button.LEFT;
+				await mouse.pressButton(downButton);
 				console.log("[Nut Worker] 鼠标按下成功:", {
 					button: data.button,
 					mapped: downButton,
@@ -214,18 +233,18 @@ parentPort.on("message", async (message) => {
 						原始: { x: data.x, y: data.y },
 						转换后: coords,
 					});
-					await mouse.move([new Point(coords.x, coords.y)]);
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const upButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? Button.Left
+							? Button.LEFT
 							: data.button === 1
-								? Button.Middle
-								: Button.Right
-						: Button.Left;
-				await mouse.release(upButton);
+								? Button.MIDDLE
+								: Button.RIGHT
+						: Button.LEFT;
+				await mouse.releaseButton(upButton);
 				console.log("[Nut Worker] 鼠标释放成功:", {
 					button: data.button,
 					mapped: upButton,
@@ -257,18 +276,27 @@ parentPort.on("message", async (message) => {
 							原始: { x: data.x, y: data.y },
 							转换后: coords,
 						});
-						await mouse.move([new Point(coords.x, coords.y)]);
+						await mouse.setMousePosition(new Point(coords.x, coords.y));
 					}
 					// 映射按键值：0=left, 1=middle, 2=right
 					const clickButton =
 						typeof data.button === "number"
 							? data.button === 0
-								? Button.Left
+								? Button.LEFT
 								: data.button === 1
-									? Button.Middle
-									: Button.Right
-							: Button.Left;
-					await mouse.click(clickButton);
+									? Button.MIDDLE
+									: Button.RIGHT
+							: Button.LEFT;
+					
+					// 使用正确的点击方法
+					if (clickButton === Button.LEFT) {
+						await mouse.leftClick();
+					} else if (clickButton === Button.RIGHT) {
+						await mouse.rightClick();
+					} else if (clickButton === Button.MIDDLE) {
+						await mouse.middleClick();
+					}
+					
 					console.log("[Nut Worker] 鼠标点击成功:", {
 						button: data.button,
 						mapped: clickButton,
@@ -283,17 +311,17 @@ parentPort.on("message", async (message) => {
 			case "doubleclick": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					await mouse.move([new Point(coords.x, coords.y)]);
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const dblClickButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? Button.Left
+							? Button.LEFT
 							: data.button === 1
-								? Button.Middle
-								: Button.Right
-						: Button.Left;
+								? Button.MIDDLE
+								: Button.RIGHT
+						: Button.LEFT;
 				await mouse.doubleClick(dblClickButton);
 				console.log("[Nut Worker] 双击:", {
 					button: data.button,
@@ -303,34 +331,46 @@ parentPort.on("message", async (message) => {
 			}
 
 			case "contextmenu":
+				console.log("[Nut Worker] 收到右键菜单事件:", {
+					data: data,
+					hasCoords: data.x !== undefined && data.y !== undefined,
+					button: data.button,
+					source: data.source,
+				});
+				
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					await mouse.move([new Point(coords.x, coords.y)]);
+					console.log("[Nut Worker] 坐标转换结果:", {
+						原始: { x: data.x, y: data.y },
+						转换后: coords,
+					});
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				await mouse.rightClick();
+				console.log("[Nut Worker] 右键菜单执行成功");
 				break;
 
 			case "longpress": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					await mouse.move([new Point(coords.x, coords.y)]);
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const longPressButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? Button.Left
+							? Button.LEFT
 							: data.button === 1
-								? Button.Middle
-								: Button.Right
-						: Button.Left;
-				await mouse.press(longPressButton);
+								? Button.MIDDLE
+								: Button.RIGHT
+						: Button.LEFT;
+				await mouse.pressButton(longPressButton);
 				console.log("[Nut Worker] 长按开始:", {
 					button: data.button,
 					mapped: longPressButton,
 				});
 				setTimeout(async () => {
-					await mouse.release(longPressButton);
+					await mouse.releaseButton(longPressButton);
 					console.log("[Nut Worker] 长按结束:", { mapped: longPressButton });
 				}, 100);
 				break;
@@ -568,14 +608,14 @@ parentPort.on("message", async (message) => {
 				// 触摸开始 - 模拟鼠标按下
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					await mouse.move([new Point(coords.x, coords.y)]);
+					await mouse.setMousePosition(new Point(coords.x, coords.y));
 				}
 				// 单点触摸模拟左键，多点触摸可以有不同处理
 				if (data.touchCount === 1) {
-					await mouse.press(Button.Left);
+					await mouse.pressButton(Button.LEFT);
 				} else if (data.touchCount === 2) {
 					// 双指触摸可以模拟右键
-					await mouse.press(Button.Right);
+					await mouse.pressButton(Button.RIGHT);
 				}
 				break;
 
@@ -591,9 +631,9 @@ parentPort.on("message", async (message) => {
 			case "touchend":
 				// 触摸结束 - 模拟鼠标释放
 				if (data.touchCount <= 1) {
-					await mouse.release(Button.Left);
+					await mouse.releaseButton(Button.LEFT);
 				} else if (data.touchCount === 2) {
-					await mouse.release(Button.Right);
+					await mouse.releaseButton(Button.RIGHT);
 				}
 				break;
 

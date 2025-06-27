@@ -1848,9 +1848,22 @@ class ScreenShareApp {
 			if (this.isControlEnabled) {
 				event.preventDefault();
 
+				console.log("[Canvas鼠标] 收到右键菜单事件:", {
+					event: event,
+					button: event.button,
+					clientX: event.clientX,
+					clientY: event.clientY,
+				});
+
 				// 发送右键菜单命令
 				const coords = this.getMouseCoords(event);
 				if (coords.valid) {
+					console.log("[Canvas鼠标] 发送右键菜单命令:", {
+						type: "contextmenu",
+						coords: coords,
+						button: 2, // 右键
+						source: "contextmenu-event",
+					});
 					this.sendMouseCommand("contextmenu", coords, {
 						button: 2, // 右键
 						source: "contextmenu-event",
@@ -2312,12 +2325,24 @@ class ScreenShareApp {
 			if (!this.isControlEnabled || !document.pointerLockElement) return;
 			event.preventDefault();
 
+			console.log("[指针锁定] 收到点击事件:", {
+				event: event,
+				button: event.button,
+				virtualMousePosition: this.virtualMousePosition,
+			});
+
 			if (this.virtualMousePosition) {
 				const coords = this.calculateCanvasToRemoteCoords(
 					this.virtualMousePosition.x,
 					this.virtualMousePosition.y,
 				);
 				if (coords.valid) {
+					console.log("[指针锁定] 发送点击命令:", {
+						type: "mouseclick",
+						coords: coords,
+						button: event.button,
+						source: "pointer-lock",
+					});
 					this.sendMouseCommand("mouseclick", coords, {
 						button: event.button,
 						source: "pointer-lock",
@@ -2331,6 +2356,12 @@ class ScreenShareApp {
 			if (this.isControlEnabled && document.pointerLockElement) {
 				event.preventDefault();
 
+				console.log("[指针锁定] 收到右键菜单事件:", {
+					event: event,
+					button: event.button,
+					virtualMousePosition: this.virtualMousePosition,
+				});
+
 				// 发送右键菜单命令
 				if (this.virtualMousePosition) {
 					const coords = this.calculateCanvasToRemoteCoords(
@@ -2338,6 +2369,12 @@ class ScreenShareApp {
 						this.virtualMousePosition.y,
 					);
 					if (coords.valid) {
+						console.log("[指针锁定] 发送右键菜单命令:", {
+							type: "contextmenu",
+							coords: coords,
+							button: 2, // 右键
+							source: "pointer-lock-contextmenu",
+						});
 						this.sendMouseCommand("contextmenu", coords, {
 							button: 2, // 右键
 							source: "pointer-lock-contextmenu",
@@ -2575,9 +2612,9 @@ class ScreenShareApp {
 				height: this.canvasRenderer ? this.canvasRenderer.videoHeight : 0,
 			},
 			screenInfo: screenInfo,
-			source: "canvas-dom", // 标记来源为Canvas DOM事件
-			isDragging: this.isDragging, // 确保拖拽状态正确传递
-			...extra,
+			...extra, // 先展开 extra，确保其中的值不被覆盖
+			source: extra.source || "canvas-dom", // 如果没有提供 source，使用默认值
+			isDragging: extra.isDragging !== undefined ? extra.isDragging : this.isDragging, // 优先使用 extra 中的值
 		};
 
 		console.log("[发送鼠标命令] 构建的命令:", command);
