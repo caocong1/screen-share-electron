@@ -252,62 +252,6 @@ parentPort.on("message", async (message) => {
 				break;
 			}
 
-			case "mouseclick": {
-				console.log("[Nut Worker] 收到鼠标点击事件:", {
-					data: data,
-					hasCoords: data.x !== undefined && data.y !== undefined,
-					button: data.button,
-					source: data.source,
-					isDragging: data.isDragging,
-					条件检查: {
-						isDraggingFalse: data.isDragging === false,
-						sourceStandalone: data.source === "standalone-click",
-						应该处理: data.isDragging === false || data.source === "standalone-click",
-					},
-				});
-				
-				// 修复：简化条件检查，确保所有点击事件都能被处理
-				// 只有在明确标记为拖拽状态时才忽略点击事件
-				if (data.isDragging !== true) {
-					// 只有在非拖拽状态下才处理click事件
-					if (data.x !== undefined && data.y !== undefined) {
-						const coords = transformCoordinates(data);
-						console.log("[Nut Worker] 坐标转换结果:", {
-							原始: { x: data.x, y: data.y },
-							转换后: coords,
-						});
-						await mouse.setMousePosition(new Point(coords.x, coords.y));
-					}
-					// 映射按键值：0=left, 1=middle, 2=right
-					const clickButton =
-						typeof data.button === "number"
-							? data.button === 0
-								? Button.LEFT
-								: data.button === 1
-									? Button.MIDDLE
-									: Button.RIGHT
-							: Button.LEFT;
-					
-					// 使用正确的点击方法
-					if (clickButton === Button.LEFT) {
-						await mouse.leftClick();
-					} else if (clickButton === Button.RIGHT) {
-						await mouse.rightClick();
-					} else if (clickButton === Button.MIDDLE) {
-						await mouse.middleClick();
-					}
-					
-					console.log("[Nut Worker] 鼠标点击成功:", {
-						button: data.button,
-						mapped: clickButton,
-					});
-				} else {
-					// 拖拽后的click事件被忽略
-					console.log("[Nut Worker] 忽略拖拽后的click事件，防止取消选中");
-				}
-				break;
-			}
-
 			case "doubleclick": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);

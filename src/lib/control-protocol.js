@@ -16,7 +16,6 @@ export const COMMAND_TYPE = {
 	MOUSE_DRAG: 0x02,
 	MOUSE_DOWN: 0x03,
 	MOUSE_UP: 0x04,
-	MOUSE_CLICK: 0x05,
 	DOUBLE_CLICK: 0x06,
 	CONTEXT_MENU: 0x07,
 	LONG_PRESS: 0x08,
@@ -169,9 +168,6 @@ export function encodeControlCommand(command) {
 				break;
 			case "mouseup":
 				commandType = COMMAND_TYPE.MOUSE_UP;
-				break;
-			case "mouseclick":
-				commandType = COMMAND_TYPE.MOUSE_CLICK;
 				break;
 			case "doubleclick":
 				commandType = COMMAND_TYPE.DOUBLE_CLICK;
@@ -451,9 +447,6 @@ export function decodeControlCommand(buffer) {
 				break;
 			case COMMAND_TYPE.MOUSE_UP:
 				type = "mouseup";
-				break;
-			case COMMAND_TYPE.MOUSE_CLICK:
-				type = "mouseclick";
 				break;
 			case COMMAND_TYPE.DOUBLE_CLICK:
 				type = "doubleclick";

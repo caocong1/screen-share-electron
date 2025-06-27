@@ -104,7 +104,7 @@
 ### 支持的事件类型
 - `mousemove` / `mousedrag`：鼠标移动/拖拽
 - `mousedown` / `mouseup`：鼠标按下/释放
-- `mouseclick` / `doubleclick`：单击/双击
+- `doubleclick`：双击
 - `contextmenu`：右键菜单
 - `longpress`：长按
 - `scroll`：滚轮滚动
@@ -119,4 +119,4 @@
 - ✅ Windows 10/11
 - ✅ macOS 10.14+
 - ✅ Linux（部分功能）
-- ✅ 跨平台控制 
+- ✅ 跨平台控制

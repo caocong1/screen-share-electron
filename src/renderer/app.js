@@ -1789,40 +1789,9 @@ class ScreenShareApp {
 				mode: "normal",
 			});
 
-			const coords = this.getMouseCoords(event);
-			console.log("[Canvas鼠标] 坐标计算结果:", {
-				coords: coords,
-				valid: coords.valid,
-			});
-			
-			if (coords.valid) {
-				// 对于右键点击，发送contextmenu事件而不是mouseclick
-				if (event.button === 2) {
-					console.log("[Canvas鼠标] 右键点击，发送contextmenu命令:", {
-						type: "contextmenu",
-						coords: coords,
-						button: event.button,
-						source: "canvas-right-click",
-					});
-					this.sendMouseCommand("contextmenu", coords, {
-						button: event.button,
-						source: "canvas-right-click",
-					});
-				} else {
-					console.log("[Canvas鼠标] 发送点击命令:", {
-						type: "mouseclick",
-						coords: coords,
-						button: event.button,
-						source: "canvas-normal",
-					});
-					this.sendMouseCommand("mouseclick", coords, {
-						button: event.button,
-						source: "canvas-normal",
-					});
-				}
-			} else {
-				console.warn("[Canvas鼠标] 点击事件坐标无效，跳过发送");
-			}
+			// 注意：不再发送 mouseclick 事件，因为 mousedown + mouseup 已经足够
+			// 点击事件的处理已经通过 mousedown 和 mouseup 完成
+			console.log("[Canvas鼠标] 点击事件已通过 mousedown + mouseup 处理，无需额外发送");
 		};
 
 		// 双击事件
@@ -2355,38 +2324,9 @@ class ScreenShareApp {
 				virtualMousePosition: this.virtualMousePosition,
 			});
 
-			if (this.virtualMousePosition) {
-				const coords = this.calculateCanvasToRemoteCoords(
-					this.virtualMousePosition.x,
-					this.virtualMousePosition.y,
-				);
-				if (coords.valid) {
-					// 对于右键点击，发送contextmenu事件而不是mouseclick
-					if (event.button === 2) {
-						console.log("[指针锁定] 右键点击，发送contextmenu命令:", {
-							type: "contextmenu",
-							coords: coords,
-							button: event.button,
-							source: "pointer-lock-right-click",
-						});
-						this.sendMouseCommand("contextmenu", coords, {
-							button: event.button,
-							source: "pointer-lock-right-click",
-						});
-					} else {
-						console.log("[指针锁定] 发送点击命令:", {
-							type: "mouseclick",
-							coords: coords,
-							button: event.button,
-							source: "pointer-lock",
-						});
-						this.sendMouseCommand("mouseclick", coords, {
-							button: event.button,
-							source: "pointer-lock",
-						});
-					}
-				}
-			}
+			// 注意：不再发送 mouseclick 事件，因为 mousedown + mouseup 已经足够
+			// 点击事件的处理已经通过 mousedown 和 mouseup 完成
+			console.log("[指针锁定] 点击事件已通过 mousedown + mouseup 处理，无需额外发送");
 		};
 
 		this.pointerLockContextMenuHandler = (event) => {

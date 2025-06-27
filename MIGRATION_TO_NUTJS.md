@@ -36,7 +36,7 @@
 | RobotJS | Nut.js |
 |---------|--------|
 | `robot.moveMouse(x, y)` | `await mouse.move([new Point(x, y)])` |
-| `robot.mouseClick(button)` | `await mouse.click(Button.Left/Right/Middle)` |
+| `robot.mouseClick(button)` | `await mouse.pressButton(button)` + `await mouse.releaseButton(button)` |
 | `robot.mouseToggle(direction, button)` | `await mouse.press(button)` / `await mouse.release(button)` |
 | `robot.scrollMouse(x, y)` | `await mouse.scrollUp/Down/Left/Right(amount)` |
 
@@ -64,7 +64,8 @@ await mouse.move([new Point(100, 200)]);
 robot.mouseClick("left");
 
 // Nut.js
-await mouse.click(Button.Left);
+await mouse.pressButton(Button.Left);
+await mouse.releaseButton(Button.Left);
 ```
 
 #### 滚轮操作
