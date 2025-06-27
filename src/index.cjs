@@ -948,6 +948,234 @@ ipcMain.handle('get-current-mouse-position', async () => {
   }
 });
 
+// 激活并置顶窗口
+ipcMain.handle('activate-window', async (event, windowInfo) => {
+  try {
+    console.log('[窗口激活] 尝试激活窗口:', windowInfo);
+    
+    if (process.platform === 'darwin') {
+      // macOS: 使用 AppleScript 激活窗口
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+      
+      let activationScript = '';
+      
+      if (windowInfo.windowName && windowInfo.appName) {
+        // 如果有具体的窗口名称和应用名称，优先使用
+        activationScript = `
+          osascript -e '
+            tell application "System Events"
+              try
+                set targetApp to application process "${windowInfo.appName}"
+                set targetWindow to first window of targetApp whose name is "${windowInfo.windowName}"
+                set frontmost of targetApp to true
+                perform action "AXRaise" of targetWindow
+                return "success: activated window ${windowInfo.windowName} of ${windowInfo.appName}"
+              on error errMsg
+                try
+                  -- 如果无法找到具体窗口，尝试激活整个应用
+                  tell application "${windowInfo.appName}"
+                    activate
+                    tell application "System Events"
+                      set frontmost of application process "${windowInfo.appName}" to true
+                    end tell
+                  end tell
+                  return "success: activated application ${windowInfo.appName}"
+                on error appErrMsg
+                  return "error: " & appErrMsg
+                end try
+              end try
+            end tell
+          '
+        `;
+      } else if (windowInfo.appName) {
+        // 如果只有应用名称，激活整个应用
+        activationScript = `
+          osascript -e '
+            try
+              tell application "${windowInfo.appName}"
+                activate
+                tell application "System Events"
+                  set frontmost of application process "${windowInfo.appName}" to true
+                end tell
+              end tell
+              return "success: activated application ${windowInfo.appName}"
+            on error errMsg
+              return "error: " & errMsg
+            end try
+          '
+        `;
+      } else {
+        return { success: false, message: '缺少窗口或应用信息' };
+      }
+      
+      try {
+        const { stdout } = await execPromise(activationScript);
+        const result = stdout.trim();
+        
+        if (result.startsWith('success:')) {
+          console.log('[窗口激活] 成功:', result);
+          return { 
+            success: true, 
+            message: result.replace('success: ', ''),
+            platform: 'darwin'
+          };
+        } else {
+          console.warn('[窗口激活] AppleScript 返回错误:', result);
+          return { 
+            success: false, 
+            message: result.replace('error: ', ''),
+            platform: 'darwin'
+          };
+        }
+      } catch (execError) {
+        console.error('[窗口激活] AppleScript 执行失败:', execError);
+        return { 
+          success: false, 
+          message: `AppleScript 执行失败: ${execError.message}`,
+          platform: 'darwin'
+        };
+      }
+    } else if (process.platform === 'win32') {
+      // Windows: 使用 Windows API 或者 PowerShell
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+      
+      try {
+        let powershellScript = '';
+        
+        if (windowInfo.windowName) {
+          // 尝试根据窗口标题激活
+          powershellScript = `
+            Add-Type -TypeDefinition '
+              using System;
+              using System.Diagnostics;
+              using System.Runtime.InteropServices;
+              public class WindowActivator {
+                [DllImport("user32.dll")]
+                public static extern bool SetForegroundWindow(IntPtr hWnd);
+                [DllImport("user32.dll")]
+                public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                [DllImport("user32.dll")]
+                public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+                public static bool ActivateWindow(string windowTitle) {
+                  IntPtr hWnd = FindWindow(null, windowTitle);
+                  if (hWnd != IntPtr.Zero) {
+                    ShowWindow(hWnd, 9); // SW_RESTORE
+                    SetForegroundWindow(hWnd);
+                    return true;
+                  }
+                  return false;
+                }
+              }
+            '
+            [WindowActivator]::ActivateWindow("${windowInfo.windowName}")
+          `;
+        } else if (windowInfo.appName) {
+          // 根据应用名称激活
+          powershellScript = `
+            $processes = Get-Process -Name "*${windowInfo.appName}*" -ErrorAction SilentlyContinue
+            if ($processes) {
+              foreach ($process in $processes) {
+                if ($process.MainWindowHandle -ne [System.IntPtr]::Zero) {
+                  Add-Type -TypeDefinition '
+                    using System;
+                    using System.Runtime.InteropServices;
+                    public class WindowActivator {
+                      [DllImport("user32.dll")]
+                      public static extern bool SetForegroundWindow(IntPtr hWnd);
+                      [DllImport("user32.dll")]
+                      public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+                    }
+                  '
+                  [WindowActivator]::ShowWindow($process.MainWindowHandle, 9)
+                  [WindowActivator]::SetForegroundWindow($process.MainWindowHandle)
+                  Write-Output "success: activated $($process.ProcessName)"
+                  exit 0
+                }
+              }
+              Write-Output "error: no visible windows found"
+            } else {
+              Write-Output "error: process not found"
+            }
+          `;
+        } else {
+          return { success: false, message: '缺少窗口或应用信息' };
+        }
+        
+        const { stdout } = await execPromise(`powershell -Command "${powershellScript}"`);
+        const result = stdout.trim();
+        
+        if (result.startsWith('success:')) {
+          console.log('[窗口激活] Windows 成功:', result);
+          return { 
+            success: true, 
+            message: result.replace('success: ', ''),
+            platform: 'win32'
+          };
+        } else {
+          console.warn('[窗口激活] Windows 失败:', result);
+          return { 
+            success: false, 
+            message: result.replace('error: ', ''),
+            platform: 'win32'
+          };
+        }
+      } catch (execError) {
+        console.error('[窗口激活] PowerShell 执行失败:', execError);
+        return { 
+          success: false, 
+          message: `PowerShell 执行失败: ${execError.message}`,
+          platform: 'win32'
+        };
+      }
+    } else {
+      // Linux: 使用 wmctrl 或 xdotool
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+      
+      try {
+        let command = '';
+        
+        if (windowInfo.windowName) {
+          // 优先尝试使用 wmctrl
+          command = `wmctrl -a "${windowInfo.windowName}" 2>/dev/null || xdotool search --name "${windowInfo.windowName}" windowactivate 2>/dev/null`;
+        } else if (windowInfo.appName) {
+          command = `wmctrl -a "${windowInfo.appName}" 2>/dev/null || xdotool search --class "${windowInfo.appName}" windowactivate 2>/dev/null`;
+        } else {
+          return { success: false, message: '缺少窗口或应用信息' };
+        }
+        
+        await execPromise(command);
+        console.log('[窗口激活] Linux 成功');
+        return { 
+          success: true, 
+          message: '窗口已激活',
+          platform: 'linux'
+        };
+      } catch (execError) {
+        console.warn('[窗口激活] Linux 命令失败:', execError.message);
+        return { 
+          success: false, 
+          message: `窗口激活失败，请确保安装了 wmctrl 或 xdotool: ${execError.message}`,
+          platform: 'linux'
+        };
+      }
+    }
+    
+  } catch (error) {
+    console.error('[窗口激活] 激活失败:', error);
+    return { 
+      success: false, 
+      message: error.message,
+      platform: process.platform
+    };
+  }
+});
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(async () => {

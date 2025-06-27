@@ -204,15 +204,21 @@ class ScreenShareApp {
     this.globalKeyDownHandler = null;
     this.globalKeyUpHandler = null;
 
-    // 全局鼠标监听状态
-    this.globalMouseMode = false;
-    this.virtualCursor = null;
-    this.lastGlobalMousePosition = { x: 0, y: 0 };
-    this.globalMouseButtonState = { left: false, right: false, middle: false };
+    // Canvas鼠标事件监听器引用
+    this.canvasMouseHandlers = {
+      mousemove: null,
+      mousedown: null,
+      mouseup: null,
+      click: null,
+      dblclick: null,
+      wheel: null,
+      contextmenu: null
+    };
     
-    // 绑定全局鼠标事件处理函数
-    this.handleGlobalMouseMove = this.handleGlobalMouseMove.bind(this);
-    this.handleCursorVisibilityChanged = this.handleCursorVisibilityChanged.bind(this);
+    // 鼠标状态跟踪
+    this.isDragging = false;
+    this.dragButton = null;
+    this.virtualMousePosition = null;
 
     // Canvas视频渲染器
     this.canvasRenderer = null;
@@ -618,6 +624,75 @@ class ScreenShareApp {
     }
 
     try {
+      // 检查是否选择的是窗口，如果是则尝试激活窗口
+      const isWindow = this.selectedSourceId.startsWith('window:');
+      let windowActivated = false;
+      
+      if (isWindow && this.selectedScreenInfo) {
+        console.log('[WINDOW-ACTIVATION] 尝试激活选中的窗口...');
+        
+        // 准备窗口信息用于激活
+        let windowInfo = {};
+        
+        // 从不同源获取窗口信息
+        if (this.selectedScreenInfo.actualWindowBounds && this.selectedScreenInfo.displayInfo) {
+          // 从 windowInfo 获取应用名称和窗口名称
+          windowInfo.appName = this.selectedSourceName.split(' - ')[0]?.replace(/^🪟 窗口: /, '')?.replace(/^🎯 窗口 \(实际位置\): /, '')?.replace(/^📍 窗口 \(估算位置\): /, '');
+          windowInfo.windowName = this.selectedSourceName;
+        } else {
+          // 尝试从源名称解析应用信息
+          const sourceNameParts = this.selectedSourceName.split(' - ');
+          if (sourceNameParts.length >= 1) {
+            let appPart = sourceNameParts[0];
+            // 移除窗口类型前缀
+            appPart = appPart.replace(/^🪟 窗口: /, '')
+                            .replace(/^🎯 窗口 \(实际位置\): /, '')
+                            .replace(/^📍 窗口 \(估算位置\): /, '');
+            
+            windowInfo.appName = appPart;
+            windowInfo.windowName = appPart;
+          }
+        }
+        
+        // 如果从选中的源信息中无法获取足够的信息，尝试使用其他方法
+        if (!windowInfo.appName) {
+          // 使用源ID尝试解析应用名称
+          const windowIdMatch = this.selectedSourceId.match(/window:(\d+):(.+)/);
+          if (windowIdMatch) {
+            windowInfo.appName = windowIdMatch[2];
+            windowInfo.windowName = this.selectedSourceName;
+          }
+        }
+        
+        console.log('[WINDOW-ACTIVATION] 准备激活窗口:', {
+          selectedSourceId: this.selectedSourceId,
+          selectedSourceName: this.selectedSourceName,
+          windowInfo: windowInfo,
+          screenInfo: this.selectedScreenInfo
+        });
+        
+        if (windowInfo.appName) {
+          try {
+            const activationResult = await window.electronAPI.activateWindow(windowInfo);
+            if (activationResult.success) {
+              console.log('[WINDOW-ACTIVATION] 窗口激活成功:', activationResult.message);
+              windowActivated = true;
+              this.updateAppStatus(`窗口已激活: ${activationResult.message}`);
+              
+              // 给窗口一点时间来完成激活动画
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              console.warn('[WINDOW-ACTIVATION] 窗口激活失败:', activationResult.message);
+              this.updateAppStatus(`窗口激活失败: ${activationResult.message}`);
+            }
+          } catch (activationError) {
+            console.error('[WINDOW-ACTIVATION] 窗口激活出错:', activationError);
+          }
+        } else {
+          console.warn('[WINDOW-ACTIVATION] 无法确定要激活的窗口信息');
+        }
+      }
+      
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -639,7 +714,11 @@ class ScreenShareApp {
         type: 'announce-host',
         screenInfo: this.selectedScreenInfo
       });
-      this.updateAppStatus(`正在分享屏幕...`);
+      
+      const statusMessage = windowActivated 
+        ? `正在分享窗口（已激活）...` 
+        : `正在分享${isWindow ? '窗口' : '屏幕'}...`;
+      this.updateAppStatus(statusMessage);
     } catch (error) {
       console.error('获取媒体流失败:', error);
       alert('无法开始屏幕分享。请检查权限设置。');
@@ -949,33 +1028,19 @@ class ScreenShareApp {
   
   // --- 远程控制 ---
   async toggleRemoteControl() {
-    if (!this.isControlEnabled) {
-      // 启动远程控制时，询问是否使用全局鼠标模式
-      const useGlobalMouse = confirm('是否使用全局鼠标模式？\n\n全局鼠标模式可以避免坐标转换问题，提供更精确的控制。\n\n点击"确定"使用全局鼠标模式\n点击"取消"使用传统DOM事件模式');
-      
-      if (useGlobalMouse) {
-        await this.toggleGlobalMouseMode();
-      } else {
-        // 使用DOM模式时启用指针锁定
-        await this.enablePointerLock();
-      }
-    }
-    
-    // 原有的远程控制逻辑
     this.isControlEnabled = !this.isControlEnabled;
     
     if (this.isControlEnabled) {
+      // 启用远程控制时，启用指针锁定和鼠标事件监听
+      await this.enablePointerLock();
+      this.bindCanvasMouseEvents();
       this.dom.remoteCanvas.style.cursor = 'crosshair';
       this.enableGlobalKeyboardControl();
-      this.updateAppStatus('远程控制已启用 - 可以控制远程桌面');
+      this.updateAppStatus('远程控制已启用 - 点击Canvas区域锁定鼠标');
     } else {
-      // 停止远程控制时，同时停止全局鼠标模式和指针锁定
-      if (this.globalMouseMode) {
-        await this.stopGlobalMouseMode();
-      } else {
-        await this.disablePointerLock();
-      }
-      
+      // 停止远程控制时，禁用指针锁定和事件监听
+      await this.disablePointerLock();
+      this.unbindCanvasMouseEvents();
       this.dom.remoteCanvas.style.cursor = '';
       this.disableGlobalKeyboardControl();
       this.updateAppStatus('远程控制已禁用');
@@ -1740,162 +1805,183 @@ class ScreenShareApp {
     }
   }
 
-  // 新增：切换全局鼠标模式
-  async toggleGlobalMouseMode() {
-    try {
-      if (!this.globalMouseMode) {
-        // 启动全局鼠标模式
-        const result = await window.electronAPI.startGlobalMouseListening();
-        if (result.success) {
-          this.globalMouseMode = true;
-          
-          // 注册全局鼠标事件监听
-          window.electronAPI.onGlobalMouseMove(this.handleGlobalMouseMove);
-          window.electronAPI.onCursorVisibilityChanged(this.handleCursorVisibilityChanged);
-          
-          // 只隐藏视频区域的原生光标，让用户通过远程视频中的光标获得反馈
-          this.hideVideoAreaCursor();
-          
-          console.log('[全局鼠标] 模式已启动');
-          this.updateAppStatus('全局鼠标模式已启动 - 通过远程视频中的光标获得反馈');
-          
-          // 更新按钮状态
-          this.updateGlobalMouseButton(true);
-          
-          // 更新模式指示器
-          this.updateCursorModeIndicator('global');
-          
-        } else {
-          console.error('[全局鼠标] 启动失败:', result.message);
-          this.updateAppStatus(`全局鼠标模式启动失败: ${result.message}`);
+
+
+
+
+  // 绑定Canvas鼠标事件
+  bindCanvasMouseEvents() {
+    if (!this.dom.remoteCanvas) return;
+    
+    // 鼠标移动事件（在指针锁定模式下使用movementX/Y）
+    this.canvasMouseHandlers.mousemove = (event) => {
+      if (!this.isControlEnabled) return;
+      
+      if (document.pointerLockElement === this.dom.remoteCanvas) {
+        // 指针锁定模式 - 使用相对移动量
+        const movementX = event.movementX || 0;
+        const movementY = event.movementY || 0;
+        
+        if (movementX !== 0 || movementY !== 0) {
+          this.handlePointerLockMouseMove(movementX, movementY);
         }
       } else {
-        // 停止全局鼠标模式
-        await this.stopGlobalMouseMode();
+        // 普通模式 - 使用绝对坐标
+        const rect = this.dom.remoteCanvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        this.handleCanvasMouseMove(x, y);
       }
-    } catch (error) {
-      console.error('[全局鼠标] 切换失败:', error);
-      this.updateAppStatus(`全局鼠标模式切换失败: ${error.message}`);
-    }
-  }
-
-  // 停止全局鼠标模式
-  async stopGlobalMouseMode() {
-    try {
-      if (this.globalMouseMode) {
-        // 通过Worker停止全局鼠标监听
-        const result = await window.electronAPI.stopGlobalMouseListening();
-        if (result.success) {
-          // 移除事件监听器
-          window.electronAPI.removeGlobalMouseListeners();
-          
-          // 恢复视频区域的原生光标
-          this.showVideoAreaCursor();
-          
-          this.globalMouseMode = false;
-          
-          console.log('[全局鼠标] 模式已停止');
-          this.updateAppStatus('全局鼠标模式已停止 - 已恢复DOM事件模式');
-          
-          // 更新按钮状态
-          this.updateGlobalMouseButton(false);
-          
-          // 更新模式指示器
-          this.updateCursorModeIndicator('dom');
-        } else {
-          console.error('[全局鼠标] 停止失败:', result.message);
-          this.updateAppStatus(`停止全局鼠标模式失败: ${result.message}`);
-        }
+    };
+    
+    // 鼠标按下事件
+    this.canvasMouseHandlers.mousedown = (event) => {
+      if (!this.isControlEnabled) return;
+      event.preventDefault();
+      
+      this.isDragging = true;
+      this.dragButton = event.button;
+      
+      const coords = this.getMouseCoords(event);
+      if (coords.valid) {
+        this.sendMouseCommand('mousedown', coords, { button: event.button });
       }
-    } catch (error) {
-      console.error('[全局鼠标] 停止失败:', error);
-      this.updateAppStatus(`停止全局鼠标模式失败: ${error.message}`);
-    }
-  }
-
-  // 创建虚拟光标 - 已禁用，使用远程视频中的光标反馈
-  createVirtualCursor() {
-    // 不再创建虚拟光标，用户通过远程视频中的光标获得视觉反馈
-    console.log('[虚拟光标] 已禁用 - 使用远程视频中的光标反馈');
-  }
-
-  // 销毁虚拟光标 - 已禁用
-  destroyVirtualCursor() {
-    // 无需操作
-  }
-
-  // 更新虚拟光标位置 - 已禁用
-  updateVirtualCursorPosition(x, y) {
-    // 无需操作，使用远程视频中的光标反馈
+      
+      // 如果不在指针锁定状态，尝试请求锁定
+      if (!document.pointerLockElement) {
+        this.enablePointerLock();
+      }
+    };
+    
+    // 鼠标释放事件
+    this.canvasMouseHandlers.mouseup = (event) => {
+      if (!this.isControlEnabled) return;
+      event.preventDefault();
+      
+      this.isDragging = false;
+      this.dragButton = null;
+      
+      const coords = this.getMouseCoords(event);
+      if (coords.valid) {
+        this.sendMouseCommand('mouseup', coords, { button: event.button });
+      }
+    };
+    
+    // 单击事件
+    this.canvasMouseHandlers.click = (event) => {
+      if (!this.isControlEnabled) return;
+      event.preventDefault();
+      
+      const coords = this.getMouseCoords(event);
+      if (coords.valid) {
+        this.sendMouseCommand('click', coords, { button: event.button });
+      }
+    };
+    
+    // 双击事件
+    this.canvasMouseHandlers.dblclick = (event) => {
+      if (!this.isControlEnabled) return;
+      event.preventDefault();
+      
+      const coords = this.getMouseCoords(event);
+      if (coords.valid) {
+        this.sendMouseCommand('dblclick', coords, { button: event.button });
+      }
+    };
+    
+    // 滚轮事件
+    this.canvasMouseHandlers.wheel = (event) => {
+      if (!this.isControlEnabled) return;
+      event.preventDefault();
+      
+      const coords = this.getMouseCoords(event);
+      if (coords.valid) {
+        this.sendMouseCommand('wheel', coords, {
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaZ: event.deltaZ,
+          deltaMode: event.deltaMode
+        });
+      }
+    };
+    
+    // 阻止右键菜单
+    this.canvasMouseHandlers.contextmenu = (event) => {
+      if (this.isControlEnabled) {
+        event.preventDefault();
+      }
+    };
+    
+    // 绑定所有事件
+    Object.entries(this.canvasMouseHandlers).forEach(([eventType, handler]) => {
+      if (handler) {
+        this.dom.remoteCanvas.addEventListener(eventType, handler, { passive: false });
+      }
+    });
+    
+    console.log('[Canvas鼠标] 已绑定所有鼠标事件');
   }
   
-  // 更新虚拟光标状态 - 已禁用
-  updateVirtualCursorState(state) {
-    // 无需操作，使用远程视频中的光标反馈
-  }
-
-  // 隐藏视频区域的原生光标
-  hideVideoAreaCursor() {
-    if (this.dom.remoteCanvas) {
-      this.dom.remoteCanvas.style.cursor = 'none';
-      this.dom.remoteCanvas.parentElement.style.cursor = 'none';
-    }
+  // 解绑Canvas鼠标事件
+  unbindCanvasMouseEvents() {
+    if (!this.dom.remoteCanvas) return;
     
-    // 添加全局鼠标模式标记（用于样式控制，但不隐藏整个页面光标）
-    document.body.classList.add('global-mouse-mode');
-  }
-
-  // 显示视频区域的原生光标
-  showVideoAreaCursor() {
-    if (this.dom.remoteCanvas) {
-      this.dom.remoteCanvas.style.cursor = '';
-      this.dom.remoteCanvas.parentElement.style.cursor = '';
-    }
-    
-    // 移除全局鼠标模式标记
-    document.body.classList.remove('global-mouse-mode');
-  }
-
-  // 处理全局鼠标移动
-  handleGlobalMouseMove(data) {
-    if (!this.globalMouseMode || !this.isControlEnabled) return;
-    
-    const { x, y, previousX, previousY, timestamp } = data;
-    
-    // 检查鼠标是否在视频区域内
-    const videoRect = this.dom.remoteCanvas.getBoundingClientRect();
-    const relativeX = x - videoRect.left;
-    const relativeY = y - videoRect.top;
-    
-    const isInVideoArea = relativeX >= 0 && relativeX <= videoRect.width && 
-                         relativeY >= 0 && relativeY <= videoRect.height;
-    
-    if (isInVideoArea) {
-      // 计算相对于视频的坐标
-      const videoCoords = this.calculateGlobalMouseToVideoCoords(relativeX, relativeY);
-      
-      if (videoCoords.valid) {
-        // 发送远程控制命令
-        this.sendGlobalMouseMove(videoCoords, data);
+    // 解绑所有事件
+    Object.entries(this.canvasMouseHandlers).forEach(([eventType, handler]) => {
+      if (handler) {
+        this.dom.remoteCanvas.removeEventListener(eventType, handler);
       }
-    }
+    });
     
-    this.lastGlobalMousePosition = { x, y };
+    // 清理状态
+    this.isDragging = false;
+    this.dragButton = null;
+    this.virtualMousePosition = null;
+    
+    console.log('[Canvas鼠标] 已解绑所有鼠标事件');
   }
-
-  // 计算全局鼠标坐标到视频坐标的转换
-  calculateGlobalMouseToVideoCoords(relativeX, relativeY) {
+  
+  // 处理普通模式下的鼠标移动
+  handleCanvasMouseMove(canvasX, canvasY) {
+    const coords = this.calculateCanvasToRemoteCoords(canvasX, canvasY);
+    
+    if (coords.valid) {
+      this.sendMouseCommand('mousemove', coords);
+    }
+  }
+  
+  // 获取鼠标坐标的统一方法
+  getMouseCoords(event) {
+    if (document.pointerLockElement === this.dom.remoteCanvas) {
+      // 指针锁定模式 - 使用虚拟坐标
+      if (this.virtualMousePosition) {
+        return this.calculateCanvasToRemoteCoords(
+          this.virtualMousePosition.x, 
+          this.virtualMousePosition.y
+        );
+      }
+      return { x: 0, y: 0, valid: false };
+    } else {
+      // 普通模式 - 使用实际坐标
+      const rect = this.dom.remoteCanvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      return this.calculateCanvasToRemoteCoords(x, y);
+    }
+  }
+  
+  // 计算Canvas坐标到远程坐标的转换
+  calculateCanvasToRemoteCoords(canvasX, canvasY) {
     if (!this.canvasRenderer || !this.canvasRenderer.videoWidth || !this.canvasRenderer.videoHeight) {
       return { x: 0, y: 0, valid: false };
     }
     
     const canvas = this.dom.remoteCanvas;
-    
     const rect = canvas.getBoundingClientRect();
     const videoAspectRatio = this.canvasRenderer.videoWidth / this.canvasRenderer.videoHeight;
     const containerAspectRatio = rect.width / rect.height;
     
-    // 计算视频在容器中的实际显示区域
+    // 计算视频在canvas中的实际显示区域
     let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
     
     if (videoAspectRatio > containerAspectRatio) {
@@ -1910,9 +1996,9 @@ class ScreenShareApp {
       offsetY = 0;
     }
     
-    // 检查是否在视频显示区域内
-    const videoRelativeX = relativeX - offsetX;
-    const videoRelativeY = relativeY - offsetY;
+    // 转换为视频显示区域内的坐标
+    const videoRelativeX = canvasX - offsetX;
+    const videoRelativeY = canvasY - offsetY;
     
     const valid = videoRelativeX >= 0 && videoRelativeX <= videoDisplayWidth && 
                   videoRelativeY >= 0 && videoRelativeY <= videoDisplayHeight;
@@ -1949,61 +2035,6 @@ class ScreenShareApp {
     }
     
     return { x: Math.round(x), y: Math.round(y), valid: true };
-  }
-
-  // 发送全局鼠标移动命令
-  sendGlobalMouseMove(coords, globalData) {
-    const p2p = this.p2pConnections.values().next().value;
-    if (!p2p) return;
-    
-    const screenInfo = this.getRemoteScreenInfo();
-    if (!screenInfo) return;
-    
-    const command = {
-      type: 'mousemove',
-      x: coords.x,
-      y: coords.y,
-      globalPosition: { x: globalData.x, y: globalData.y },
-      clientPlatform: window.electronAPI.platform,
-      videoResolution: {
-        width: this.canvasRenderer ? this.canvasRenderer.videoWidth : 0,
-        height: this.canvasRenderer ? this.canvasRenderer.videoHeight : 0
-      },
-      screenInfo: screenInfo,
-      source: 'global-mouse' // 标记来源
-    };
-    
-    p2p.sendControlCommand(command);
-  }
-
-  // 处理光标可见性变化 - 已简化
-  handleCursorVisibilityChanged(data) {
-    console.log('[光标可见性] 状态变化:', data);
-    // 无需操作，使用远程视频中的光标反馈
-  }
-
-  // 更新全局鼠标按钮状态
-  updateGlobalMouseButton(isActive) {
-    const button = document.getElementById('globalMouseToggle');
-    if (button) {
-      const textSpan = button.querySelector('.btn-text');
-      const iconSpan = button.querySelector('.btn-icon');
-      
-      if (textSpan) {
-        textSpan.textContent = isActive ? '停止全局' : '全局鼠标';
-      }
-      if (iconSpan) {
-        iconSpan.textContent = isActive ? '⏹️' : '🖱️';
-      }
-      
-      if (isActive) {
-        button.classList.add('danger');
-        button.classList.remove('global-mouse-toggle');
-      } else {
-        button.classList.remove('danger');
-        button.classList.add('global-mouse-toggle');
-      }
-    }
   }
 
   // 新增：启用指针锁定
@@ -2086,7 +2117,7 @@ class ScreenShareApp {
          
          // 自动重新请求锁定（可选）
          setTimeout(() => {
-           if (this.isControlEnabled && !this.globalMouseMode) {
+           if (this.isControlEnabled) {
              this.enablePointerLock();
            }
          }, 100);
@@ -2101,7 +2132,7 @@ class ScreenShareApp {
 
          // 监听鼠标移动事件（指针锁定模式下使用movementX/Y）
      this.pointerLockMouseMoveHandler = (event) => {
-       if (!this.isControlEnabled || this.globalMouseMode) return;
+       if (!this.isControlEnabled) return;
        
        // 在指针锁定模式下，使用相对移动量
        const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
@@ -2177,7 +2208,7 @@ class ScreenShareApp {
   handlePointerLockMouseMove(movementX, movementY) {
     // 累积相对移动量到虚拟鼠标位置
     if (!this.virtualMousePosition) {
-      // 初始化虚拟鼠标位置为视频中心
+      // 初始化虚拟鼠标位置为canvas中心
       const canvasRect = this.dom.remoteCanvas.getBoundingClientRect();
       this.virtualMousePosition = {
         x: canvasRect.width / 2,
@@ -2189,85 +2220,20 @@ class ScreenShareApp {
     this.virtualMousePosition.x += movementX;
     this.virtualMousePosition.y += movementY;
 
-    // 限制在视频边界内
+    // 限制在canvas边界内
     const canvasRect = this.dom.remoteCanvas.getBoundingClientRect();
     this.virtualMousePosition.x = Math.max(0, Math.min(canvasRect.width, this.virtualMousePosition.x));
     this.virtualMousePosition.y = Math.max(0, Math.min(canvasRect.height, this.virtualMousePosition.y));
 
     // 转换为远程坐标并发送
-    const coords = this.calculateVideoToRemoteCoords(this.virtualMousePosition.x, this.virtualMousePosition.y);
+    const coords = this.calculateCanvasToRemoteCoords(this.virtualMousePosition.x, this.virtualMousePosition.y);
     
     if (coords.valid) {
       this.sendMouseCommand('mousemove', coords);
     }
   }
 
-  // 新增：计算视频坐标到远程坐标的转换（复用现有逻辑）
-  calculateVideoToRemoteCoords(videoX, videoY) {
-    if (!this.canvasRenderer || !this.canvasRenderer.videoWidth || !this.canvasRenderer.videoHeight) {
-      return { x: 0, y: 0, valid: false };
-    }
-    
-    const canvas = this.dom.remoteCanvas;
-    const rect = canvas.getBoundingClientRect();
-    const videoAspectRatio = this.canvasRenderer.videoWidth / this.canvasRenderer.videoHeight;
-    const containerAspectRatio = rect.width / rect.height;
-    
-    // 计算视频在容器中的实际显示区域
-    let videoDisplayWidth, videoDisplayHeight, offsetX, offsetY;
-    
-    if (videoAspectRatio > containerAspectRatio) {
-      videoDisplayWidth = rect.width;
-      videoDisplayHeight = rect.width / videoAspectRatio;
-      offsetX = 0;
-      offsetY = (rect.height - videoDisplayHeight) / 2;
-    } else {
-      videoDisplayWidth = rect.height * videoAspectRatio;
-      videoDisplayHeight = rect.height;
-      offsetX = (rect.width - videoDisplayWidth) / 2;
-      offsetY = 0;
-    }
-    
-    // 转换为视频显示区域内的坐标
-    const videoRelativeX = videoX - offsetX;
-    const videoRelativeY = videoY - offsetY;
-    
-    const valid = videoRelativeX >= 0 && videoRelativeX <= videoDisplayWidth && 
-                  videoRelativeY >= 0 && videoRelativeY <= videoDisplayHeight;
-    
-    if (!valid) {
-      return { x: 0, y: 0, valid: false };
-    }
-    
-    // 转换为视频原始分辨率的坐标
-    const scaleX = this.canvasRenderer.videoWidth / videoDisplayWidth;
-    const scaleY = this.canvasRenderer.videoHeight / videoDisplayHeight;
-    
-    let x = videoRelativeX * scaleX;
-    let y = videoRelativeY * scaleY;
-    
-    // 应用窗口共享的坐标转换（如果需要）
-    const screenInfo = this.getRemoteScreenInfo();
-    if (screenInfo && this.isWindowShare(screenInfo)) {
-      let offsetX = 0, offsetY = 0;
-      
-      if (screenInfo.actualWindowBounds) {
-        offsetX = screenInfo.actualWindowBounds.x;
-        offsetY = screenInfo.actualWindowBounds.y;
-      } else if (screenInfo.windowBounds) {
-        offsetX = screenInfo.windowBounds.x;
-        offsetY = screenInfo.windowBounds.y;
-      } else {
-        offsetX = screenInfo.bounds.x;
-        offsetY = screenInfo.bounds.y;
-      }
-      
-      x += offsetX;
-      y += offsetY;
-    }
-    
-    return { x: Math.round(x), y: Math.round(y), valid: true };
-  }
+
 
   // 新增：发送鼠标命令的通用方法
   sendMouseCommand(type, coords, extra = {}) {
@@ -2287,9 +2253,15 @@ class ScreenShareApp {
         height: this.canvasRenderer ? this.canvasRenderer.videoHeight : 0
       },
       screenInfo: screenInfo,
-      source: 'pointer-lock', // 标记来源
+      source: 'canvas-dom', // 标记来源为Canvas DOM事件
+      isDragging: this.isDragging,
       ...extra
     };
+    
+    // 调试信息
+    if (this.dom.dragStatus && type.includes('mouse')) {
+      this.dom.dragStatus.textContent = this.isDragging ? `拖拽${this.dragButton}` : '无';
+    }
     
     p2p.sendControlCommand(command);
   }
@@ -2298,12 +2270,4 @@ class ScreenShareApp {
 // 启动应用
 document.addEventListener('DOMContentLoaded', () => {
   const app = new ScreenShareApp();
-  
-  // 绑定全局鼠标控制按钮事件
-  const globalMouseToggle = document.getElementById('globalMouseToggle');
-  if (globalMouseToggle) {
-    globalMouseToggle.addEventListener('click', () => {
-      app.toggleGlobalMouseMode();
-    });
-  }
 }); 
