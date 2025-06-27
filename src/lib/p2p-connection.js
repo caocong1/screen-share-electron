@@ -1,6 +1,10 @@
 // p2p-connection.js - 屏幕共享和远程控制版本
-import { config } from "./config.js";
-import { encodeControlCommand, decodeControlCommand, isBinaryControlCommand } from './control-protocol.js';
+import { config } from './config.js';
+import {
+  decodeControlCommand,
+  encodeControlCommand,
+  isBinaryControlCommand,
+} from './control-protocol.js';
 
 /**
  * P2PConnection 类封装了 WebRTC 的连接逻辑，用于屏幕共享和远程控制。
@@ -33,12 +37,15 @@ export class P2PConnection extends EventTarget {
     this._initializePeerConnection();
 
     // 将媒体流的轨道添加到 PeerConnection
-    stream.getTracks().forEach(track => {
+    stream.getTracks().forEach((track) => {
       this.pc.addTrack(track, stream);
     });
 
     // 创建用于远程控制的数据通道
-    this.dataChannel = this.pc.createDataChannel('remote-control', config.webrtc.dataChannel);
+    this.dataChannel = this.pc.createDataChannel(
+      'remote-control',
+      config.webrtc.dataChannel,
+    );
     this._setupDataChannelEvents();
 
     // 创建 SDP offer
@@ -62,9 +69,9 @@ export class P2PConnection extends EventTarget {
 
     // 在创建 answer 前，将媒体流的轨道添加到 PeerConnection
     if (stream) {
-        stream.getTracks().forEach(track => {
-            this.pc.addTrack(track, stream);
-        });
+      stream.getTracks().forEach((track) => {
+        this.pc.addTrack(track, stream);
+      });
     }
 
     // 创建 SDP answer
@@ -153,13 +160,15 @@ export class P2PConnection extends EventTarget {
 
     // 如果是观看端，则设置收发器以准备接收媒体
     if (this.options.isGuest) {
-        this.pc.addTransceiver('video', { direction: 'recvonly' });
-        this.pc.addTransceiver('audio', { direction: 'recvonly' });
+      this.pc.addTransceiver('video', { direction: 'recvonly' });
+      this.pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
-    this.pc.onicecandidate = event => {
+    this.pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.dispatchEvent(new CustomEvent('icecandidate', { detail: event.candidate }));
+        this.dispatchEvent(
+          new CustomEvent('icecandidate', { detail: event.candidate }),
+        );
       }
     };
 
@@ -174,12 +183,14 @@ export class P2PConnection extends EventTarget {
       }
     };
 
-    this.pc.ontrack = event => {
+    this.pc.ontrack = (event) => {
       this.remoteStream = event.streams[0];
-      this.dispatchEvent(new CustomEvent('stream', { detail: this.remoteStream }));
+      this.dispatchEvent(
+        new CustomEvent('stream', { detail: this.remoteStream }),
+      );
     };
 
-    this.pc.ondatachannel = event => {
+    this.pc.ondatachannel = (event) => {
       this.dataChannel = event.channel;
       this._setupDataChannelEvents();
     };
@@ -202,22 +213,23 @@ export class P2PConnection extends EventTarget {
       this.dispatchEvent(new CustomEvent('controlclose'));
     };
 
-    this.dataChannel.onmessage = event => {
+    this.dataChannel.onmessage = (event) => {
       try {
         let command;
-        
+
         // 检测是否为二进制协议格式
         if (isBinaryControlCommand(event.data)) {
           // 解码二进制格式
-          const buffer = event.data instanceof ArrayBuffer ? 
-            new Uint8Array(event.data) : 
-            event.data;
+          const buffer =
+            event.data instanceof ArrayBuffer
+              ? new Uint8Array(event.data)
+              : event.data;
           command = decodeControlCommand(buffer);
         } else {
           // 解析JSON格式（向后兼容）
           command = JSON.parse(event.data);
         }
-        
+
         this.dispatchEvent(new CustomEvent('control', { detail: command }));
       } catch (error) {
         console.error('[控制协议] 解析控制指令失败:', error);
@@ -230,7 +242,9 @@ export class P2PConnection extends EventTarget {
    * @private
    */
   _processPendingCandidates() {
-    this._pendingCandidates.forEach(candidate => this.addIceCandidate(candidate));
+    this._pendingCandidates.forEach((candidate) =>
+      this.addIceCandidate(candidate),
+    );
     this._pendingCandidates = [];
   }
 
@@ -239,7 +253,7 @@ export class P2PConnection extends EventTarget {
    * @private
    */
   _waitForIceGathering() {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       if (this.pc.iceGatheringState === 'complete') {
         resolve();
       } else {
@@ -257,4 +271,4 @@ export class P2PConnection extends EventTarget {
       }
     });
   }
-} 
+}

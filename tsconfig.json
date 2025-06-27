@@ -14,11 +14,6 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": [
-    "src/**/*"
-, "signal-server"  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
-} 
+  "include": ["src/**/*", "signal-server"],
+  "exclude": ["node_modules", "dist"]
+}

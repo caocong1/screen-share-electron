@@ -13,18 +13,8 @@ class CanvasVideoRenderer {
 		this.animationId = null;
 		this.isPlaying = false;
 
-		// Canvas控制按钮状态
-		this.showControls = false;
-		this.controlButtons = [];
-		this.hoveredButton = null;
-		this.buttonCallbacks = {};
-
-		this.initControlButtons();
-
 		// 绑定事件处理函数
 		this.render = this.render.bind(this);
-		this.handleCanvasClick = this.handleCanvasClick.bind(this);
-		this.handleCanvasMouseMove = this.handleCanvasMouseMove.bind(this);
 	}
 
 	setStream(stream) {
@@ -124,11 +114,6 @@ class CanvasVideoRenderer {
 				this.canvas.width,
 				this.canvas.height,
 			);
-
-			// 绘制控制按钮
-			if (this.showControls) {
-				this.drawControlButtons();
-			}
 		} catch (error) {
 			console.warn("[Canvas渲染器] 绘制帧失败:", error);
 		}
@@ -152,255 +137,6 @@ class CanvasVideoRenderer {
 			this.video = null;
 		}
 		this.stream = null;
-	}
-
-	// 初始化控制按钮
-	initControlButtons() {
-		const buttonSize = 50;
-		const padding = 15;
-		const gap = 10;
-
-		this.controlButtons = [
-			{
-				id: "keyboard",
-				x: 0, // 将在drawControlButtons中计算
-				y: padding,
-				width: buttonSize,
-				height: buttonSize,
-				icon: "⌨️",
-				label: "键盘",
-				hovered: false,
-			},
-			{
-				id: "debug",
-				x: 0, // 将在drawControlButtons中计算
-				y: padding,
-				width: buttonSize,
-				height: buttonSize,
-				icon: "🐛",
-				label: "调试",
-				hovered: false,
-			},
-			{
-				id: "exit",
-				x: 0, // 将在drawControlButtons中计算
-				y: padding,
-				width: buttonSize,
-				height: buttonSize,
-				icon: "⏹️",
-				label: "退出",
-				hovered: false,
-				danger: true,
-			},
-		];
-
-		// 绑定canvas鼠标移动事件（点击事件由ScreenShareApp统一处理）
-		this.canvas.addEventListener("mousemove", this.handleCanvasMouseMove);
-	}
-
-	// 绘制控制按钮
-	drawControlButtons() {
-		if (!this.controlButtons.length) return;
-
-		const rect = this.canvas.getBoundingClientRect();
-		const scaleX = this.canvas.width / rect.width;
-		const scaleY = this.canvas.height / rect.height;
-
-		const buttonSize = 50 * Math.min(scaleX, scaleY);
-		const padding = 15 * Math.min(scaleX, scaleY);
-		const gap = 10 * Math.min(scaleX, scaleY);
-
-		// 计算按钮位置（右上角）
-		let currentX = this.canvas.width - padding - buttonSize;
-		const startY = padding;
-
-		this.controlButtons.forEach((button, index) => {
-			button.x = currentX;
-			button.y = startY + index * (buttonSize + gap);
-			button.width = buttonSize;
-			button.height = buttonSize;
-
-			// 绘制按钮背景
-			this.ctx.save();
-
-			// 设置阴影
-			this.ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
-			this.ctx.shadowBlur = 8;
-			this.ctx.shadowOffsetX = 2;
-			this.ctx.shadowOffsetY = 2;
-
-			// 按钮背景颜色
-			if (button.danger) {
-				this.ctx.fillStyle = button.hovered
-					? "rgba(220, 53, 69, 0.9)"
-					: "rgba(220, 53, 69, 0.8)";
-			} else {
-				this.ctx.fillStyle = button.hovered
-					? "rgba(0, 0, 0, 0.8)"
-					: "rgba(0, 0, 0, 0.6)";
-			}
-
-			// 绘制圆角矩形
-			this.drawRoundedRect(
-				button.x,
-				button.y,
-				button.width,
-				button.height,
-				8 * Math.min(scaleX, scaleY),
-			);
-			this.ctx.fill();
-
-			// 绘制边框
-			this.ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-			this.ctx.lineWidth = 1;
-			this.ctx.stroke();
-
-			this.ctx.restore();
-
-			// 绘制图标
-			this.ctx.save();
-			this.ctx.fillStyle = "white";
-			this.ctx.font = `${24 * Math.min(scaleX, scaleY)}px Arial`;
-			this.ctx.textAlign = "center";
-			this.ctx.textBaseline = "middle";
-
-			const iconX = button.x + button.width / 2;
-			const iconY = button.y + button.height / 2 - 5 * Math.min(scaleX, scaleY);
-			this.ctx.fillText(button.icon, iconX, iconY);
-
-			// 绘制标签
-			this.ctx.font = `${10 * Math.min(scaleX, scaleY)}px Arial`;
-			this.ctx.fillText(
-				button.label,
-				iconX,
-				button.y + button.height - 8 * Math.min(scaleX, scaleY),
-			);
-
-			this.ctx.restore();
-		});
-
-		// 绘制提示文字
-		this.ctx.save();
-		this.ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-		const hintY =
-			startY +
-			this.controlButtons.length * (buttonSize + gap) +
-			10 * Math.min(scaleX, scaleY);
-		this.drawRoundedRect(
-			currentX - 40 * Math.min(scaleX, scaleY),
-			hintY,
-			buttonSize + 80 * Math.min(scaleX, scaleY),
-			20 * Math.min(scaleX, scaleY),
-			4 * Math.min(scaleX, scaleY),
-		);
-		this.ctx.fill();
-
-		this.ctx.fillStyle = "white";
-		this.ctx.font = `${9 * Math.min(scaleX, scaleY)}px Arial`;
-		this.ctx.textAlign = "center";
-		this.ctx.textBaseline = "middle";
-		this.ctx.fillText(
-			"按ESC键退出",
-			currentX + buttonSize / 2,
-			hintY + 10 * Math.min(scaleX, scaleY),
-		);
-		this.ctx.restore();
-	}
-
-	// 绘制圆角矩形
-	drawRoundedRect(x, y, width, height, radius) {
-		this.ctx.beginPath();
-		this.ctx.moveTo(x + radius, y);
-		this.ctx.lineTo(x + width - radius, y);
-		this.ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-		this.ctx.lineTo(x + width, y + height - radius);
-		this.ctx.quadraticCurveTo(
-			x + width,
-			y + height,
-			x + width - radius,
-			y + height,
-		);
-		this.ctx.lineTo(x + radius, y + height);
-		this.ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-		this.ctx.lineTo(x, y + radius);
-		this.ctx.quadraticCurveTo(x, y, x + radius, y);
-		this.ctx.closePath();
-	}
-
-	// 处理canvas点击事件
-	handleCanvasClick(event) {
-		if (!this.showControls) return false;
-
-		const rect = this.canvas.getBoundingClientRect();
-		const scaleX = this.canvas.width / rect.width;
-		const scaleY = this.canvas.height / rect.height;
-
-		const clickX = (event.clientX - rect.left) * scaleX;
-		const clickY = (event.clientY - rect.top) * scaleY;
-
-		// 检查是否点击了按钮
-		for (const button of this.controlButtons) {
-			if (
-				clickX >= button.x &&
-				clickX <= button.x + button.width &&
-				clickY >= button.y &&
-				clickY <= button.y + button.height
-			) {
-				console.log(`[Canvas控制] 点击了${button.label}按钮`);
-
-				// 触发回调
-				if (this.buttonCallbacks[button.id]) {
-					this.buttonCallbacks[button.id]();
-				}
-
-				event.preventDefault();
-				event.stopPropagation();
-				return true; // 表示事件已被处理
-			}
-		}
-
-		return false; // 表示事件未被处理
-	}
-
-	// 处理canvas鼠标移动事件
-	handleCanvasMouseMove(event) {
-		if (!this.showControls) return;
-
-		const rect = this.canvas.getBoundingClientRect();
-		const scaleX = this.canvas.width / rect.width;
-		const scaleY = this.canvas.height / rect.height;
-
-		const mouseX = (event.clientX - rect.left) * scaleX;
-		const mouseY = (event.clientY - rect.top) * scaleY;
-
-		let hasHover = false;
-
-		// 检查鼠标悬停
-		this.controlButtons.forEach((button) => {
-			const isHovered =
-				mouseX >= button.x &&
-				mouseX <= button.x + button.width &&
-				mouseY >= button.y &&
-				mouseY <= button.y + button.height;
-
-			if (button.hovered !== isHovered) {
-				button.hovered = isHovered;
-				hasHover = hasHover || isHovered;
-			}
-		});
-
-		// 更改光标样式
-		this.canvas.style.cursor = hasHover ? "pointer" : "";
-	}
-
-	// 设置控制按钮显示状态
-	setControlsVisible(visible) {
-		this.showControls = visible;
-	}
-
-	// 设置按钮回调
-	setButtonCallback(buttonId, callback) {
-		this.buttonCallbacks[buttonId] = callback;
 	}
 }
 
@@ -559,17 +295,6 @@ class ScreenShareApp {
 		// 初始化canvas渲染器
 		if (this.dom.remoteCanvas) {
 			this.canvasRenderer = new CanvasVideoRenderer(this.dom.remoteCanvas);
-
-			// 设置canvas控制按钮回调
-			this.canvasRenderer.setButtonCallback("keyboard", () =>
-				this.toggleVirtualKeyboard(),
-			);
-			this.canvasRenderer.setButtonCallback("debug", () =>
-				this.toggleDebugMode(),
-			);
-			this.canvasRenderer.setButtonCallback("exit", () =>
-				this.exitControlMode(),
-			);
 		}
 
 		window.app = this; // 方便控制台调试
@@ -646,15 +371,7 @@ class ScreenShareApp {
 
 		// 绑定Canvas点击事件（用于启用指针锁定）
 		if (this.dom.remoteCanvas) {
-			this.dom.remoteCanvas.addEventListener("click", (event) => {
-				// 先检查canvas控制按钮是否处理了这个事件
-				if (
-					this.canvasRenderer &&
-					this.canvasRenderer.handleCanvasClick(event)
-				) {
-					return; // 如果控制按钮处理了事件，就不继续处理
-				}
-
+			this.dom.remoteCanvas.addEventListener("click", () => {
 				if (
 					this.isControlEnabled &&
 					!this.globalMouseMode &&
@@ -1298,9 +1015,7 @@ class ScreenShareApp {
 
 	// 更新canvas内控制面板的显示状态
 	updateCanvasControls() {
-		if (!this.canvasRenderer) return;
-
-		this.canvasRenderer.setControlsVisible(this.isControlEnabled);
+		// Canvas控制按钮已移除
 	}
 
 	// 调试模式开关
@@ -1982,33 +1697,6 @@ class ScreenShareApp {
 		this.dom.appStatus.textContent = text;
 	}
 
-	// 更新光标模式指示器
-	updateCursorModeIndicator(mode) {
-		const indicator = document.getElementById("cursorModeIndicator");
-		const text = document.getElementById("cursorModeText");
-
-		if (indicator && text) {
-			// 显示指示器
-			indicator.classList.add("show");
-
-			// 移除之前的模式类
-			indicator.classList.remove("global-mode", "dom-mode");
-
-			if (mode === "global") {
-				indicator.classList.add("global-mode");
-				text.textContent = "全局鼠标模式";
-			} else {
-				indicator.classList.add("dom-mode");
-				text.textContent = "DOM事件模式";
-			}
-
-			// 3秒后自动隐藏
-			setTimeout(() => {
-				indicator.classList.remove("show");
-			}, 3000);
-		}
-	}
-
 	// 绑定Canvas鼠标事件
 	bindCanvasMouseEvents() {
 		if (!this.dom.remoteCanvas) return;
@@ -2074,7 +1762,7 @@ class ScreenShareApp {
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("click", coords, { button: event.button });
+				this.sendMouseCommand("mouseclick", coords, { button: event.button });
 			}
 		};
 
@@ -2085,7 +1773,7 @@ class ScreenShareApp {
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("dblclick", coords, { button: event.button });
+				this.sendMouseCommand("doubleclick", coords, { button: event.button });
 			}
 		};
 
@@ -2096,7 +1784,13 @@ class ScreenShareApp {
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("wheel", coords, {
+				// 转换滚轮增量为标准化的滚动值
+				const scrollX = event.deltaX * 0.1; // 水平滚动（触摸板）
+				const scrollY = event.deltaY * 0.1; // 垂直滚动
+
+				this.sendMouseCommand("scroll", coords, {
+					x: scrollX,
+					y: scrollY,
 					deltaX: event.deltaX,
 					deltaY: event.deltaY,
 					deltaZ: event.deltaZ,
@@ -2109,6 +1803,113 @@ class ScreenShareApp {
 		this.canvasMouseHandlers.contextmenu = (event) => {
 			if (this.isControlEnabled) {
 				event.preventDefault();
+			}
+		};
+
+		// 触摸板手势事件（双指缩放等）
+		this.canvasMouseHandlers.gesturestart = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			const coords = this.getMouseCoords(event);
+			if (coords.valid) {
+				this.sendMouseCommand("gesturestart", coords, {
+					scale: event.scale,
+					rotation: event.rotation,
+				});
+			}
+		};
+
+		this.canvasMouseHandlers.gesturechange = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			const coords = this.getMouseCoords(event);
+			if (coords.valid) {
+				this.sendMouseCommand("gesturechange", coords, {
+					scale: event.scale,
+					rotation: event.rotation,
+				});
+			}
+		};
+
+		this.canvasMouseHandlers.gestureend = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			const coords = this.getMouseCoords(event);
+			if (coords.valid) {
+				this.sendMouseCommand("gestureend", coords, {
+					scale: event.scale,
+					rotation: event.rotation,
+				});
+			}
+		};
+
+		// 触摸事件支持（移动端/触摸屏）
+		this.canvasMouseHandlers.touchstart = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			// 处理多点触摸
+			for (let i = 0; i < event.touches.length; i++) {
+				const touch = event.touches[i];
+				const rect = this.dom.remoteCanvas.getBoundingClientRect();
+				const x = touch.clientX - rect.left;
+				const y = touch.clientY - rect.top;
+				const coords = this.calculateCanvasToRemoteCoords(x, y);
+
+				if (coords.valid) {
+					this.sendMouseCommand("touchstart", coords, {
+						touchId: touch.identifier,
+						touchCount: event.touches.length,
+						touchIndex: i,
+					});
+				}
+			}
+		};
+
+		this.canvasMouseHandlers.touchmove = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			// 处理多点触摸移动
+			for (let i = 0; i < event.touches.length; i++) {
+				const touch = event.touches[i];
+				const rect = this.dom.remoteCanvas.getBoundingClientRect();
+				const x = touch.clientX - rect.left;
+				const y = touch.clientY - rect.top;
+				const coords = this.calculateCanvasToRemoteCoords(x, y);
+
+				if (coords.valid) {
+					this.sendMouseCommand("touchmove", coords, {
+						touchId: touch.identifier,
+						touchCount: event.touches.length,
+						touchIndex: i,
+					});
+				}
+			}
+		};
+
+		this.canvasMouseHandlers.touchend = (event) => {
+			if (!this.isControlEnabled) return;
+			event.preventDefault();
+
+			// 处理触摸结束
+			for (let i = 0; i < event.changedTouches.length; i++) {
+				const touch = event.changedTouches[i];
+				const rect = this.dom.remoteCanvas.getBoundingClientRect();
+				const x = touch.clientX - rect.left;
+				const y = touch.clientY - rect.top;
+				const coords = this.calculateCanvasToRemoteCoords(x, y);
+
+				if (coords.valid) {
+					this.sendMouseCommand("touchend", coords, {
+						touchId: touch.identifier,
+						touchCount: event.touches.length,
+						touchIndex: i,
+					});
+				}
 			}
 		};
 
@@ -2148,7 +1949,11 @@ class ScreenShareApp {
 		const coords = this.calculateCanvasToRemoteCoords(canvasX, canvasY);
 
 		if (coords.valid) {
-			this.sendMouseCommand("mousemove", coords);
+			// 根据拖拽状态发送不同的事件类型
+			const eventType = this.isDragging ? "mousedrag" : "mousemove";
+			this.sendMouseCommand(eventType, coords, {
+				button: this.dragButton,
+			});
 		}
 	}
 
@@ -2490,7 +2295,11 @@ class ScreenShareApp {
 		);
 
 		if (coords.valid) {
-			this.sendMouseCommand("mousemove", coords);
+			// 根据拖拽状态发送不同的事件类型
+			const eventType = this.isDragging ? "mousedrag" : "mousemove";
+			this.sendMouseCommand(eventType, coords, {
+				button: this.dragButton,
+			});
 		}
 	}
 
