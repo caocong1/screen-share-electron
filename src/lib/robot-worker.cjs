@@ -158,24 +158,52 @@ parentPort.on("message", (message) => {
 				addMouseMoveToQueue(data);
 				break;
 
-			case "mousedown":
+			case "mousedown": {
 				// 鼠标按下需要立即处理
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
 					robot.moveMouse(coords.x, coords.y);
 				}
-				robot.mouseToggle("down", data.button || "left");
+				// 映射按键值：0=left, 1=middle, 2=right
+				const downButton =
+					typeof data.button === "number"
+						? data.button === 0
+							? "left"
+							: data.button === 1
+								? "middle"
+								: "right"
+						: data.button || "left";
+				robot.mouseToggle("down", downButton);
+				console.log("[Robot Worker] 鼠标按下:", {
+					button: data.button,
+					mapped: downButton,
+				});
 				break;
+			}
 
-			case "mouseup":
+			case "mouseup": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
 					robot.moveMouse(coords.x, coords.y);
 				}
-				robot.mouseToggle("up", data.button || "left");
+				// 映射按键值：0=left, 1=middle, 2=right
+				const upButton =
+					typeof data.button === "number"
+						? data.button === 0
+							? "left"
+							: data.button === 1
+								? "middle"
+								: "right"
+						: data.button || "left";
+				robot.mouseToggle("up", upButton);
+				console.log("[Robot Worker] 鼠标释放:", {
+					button: data.button,
+					mapped: upButton,
+				});
 				break;
+			}
 
-			case "mouseclick":
+			case "mouseclick": {
 				// 检查是否在拖拽状态中，如果是拖拽操作，则忽略后续的click事件
 				// 避免拖拽选中被意外取消
 				if (data.isDragging === false || data.source === "standalone-click") {
@@ -184,20 +212,48 @@ parentPort.on("message", (message) => {
 						const coords = transformCoordinates(data);
 						robot.moveMouse(coords.x, coords.y);
 					}
-					robot.mouseClick(data.button || "left", false);
+					// 映射按键值：0=left, 1=middle, 2=right
+					const clickButton =
+						typeof data.button === "number"
+							? data.button === 0
+								? "left"
+								: data.button === 1
+									? "middle"
+									: "right"
+							: data.button || "left";
+					robot.mouseClick(clickButton, false);
+					console.log("[Robot Worker] 鼠标点击:", {
+						button: data.button,
+						mapped: clickButton,
+					});
 				} else {
 					// 拖拽后的click事件被忽略
 					console.log("[Robot Worker] 忽略拖拽后的click事件，防止取消选中");
 				}
 				break;
+			}
 
-			case "doubleclick":
+			case "doubleclick": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
 					robot.moveMouse(coords.x, coords.y);
 				}
-				robot.mouseClick(data.button || "left", true);
+				// 映射按键值：0=left, 1=middle, 2=right
+				const dblClickButton =
+					typeof data.button === "number"
+						? data.button === 0
+							? "left"
+							: data.button === 1
+								? "middle"
+								: "right"
+						: data.button || "left";
+				robot.mouseClick(dblClickButton, true);
+				console.log("[Robot Worker] 双击:", {
+					button: data.button,
+					mapped: dblClickButton,
+				});
 				break;
+			}
 
 			case "contextmenu":
 				if (data.x !== undefined && data.y !== undefined) {
@@ -207,16 +263,31 @@ parentPort.on("message", (message) => {
 				robot.mouseClick("right");
 				break;
 
-			case "longpress":
+			case "longpress": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
 					robot.moveMouse(coords.x, coords.y);
 				}
-				robot.mouseToggle("down", data.button || "left");
+				// 映射按键值：0=left, 1=middle, 2=right
+				const longPressButton =
+					typeof data.button === "number"
+						? data.button === 0
+							? "left"
+							: data.button === 1
+								? "middle"
+								: "right"
+						: data.button || "left";
+				robot.mouseToggle("down", longPressButton);
+				console.log("[Robot Worker] 长按开始:", {
+					button: data.button,
+					mapped: longPressButton,
+				});
 				setTimeout(() => {
-					robot.mouseToggle("up", data.button || "left");
+					robot.mouseToggle("up", longPressButton);
+					console.log("[Robot Worker] 长按结束:", { mapped: longPressButton });
 				}, 100);
 				break;
+			}
 
 			case "scroll":
 				// 修复滚轮事件处理
@@ -261,18 +332,42 @@ parentPort.on("message", (message) => {
 					// 执行滚动
 					if (scrollX !== 0 || scrollY !== 0) {
 						robot.scrollMouse(scrollX, scrollY);
-						console.log("[Robot Worker] 滚轮操作:", {
+						console.log("[Robot Worker] 滚轮操作成功:", {
 							原始: {
 								deltaX: data.deltaX,
 								deltaY: data.deltaY,
 								deltaMode: data.deltaMode,
 							},
 							处理后: { scrollX, scrollY },
+							执行结果: "已调用robot.scrollMouse",
+						});
+					} else {
+						console.log("[Robot Worker] 滚轮操作跳过:", {
+							原始: {
+								deltaX: data.deltaX,
+								deltaY: data.deltaY,
+								deltaMode: data.deltaMode,
+							},
+							原因: "scrollX和scrollY都为0",
 						});
 					}
 				} else if (typeof data.x === "number" || typeof data.y === "number") {
 					// 兜底逻辑：使用处理过的 x/y 值
-					robot.scrollMouse(Math.round(data.x || 0), Math.round(data.y || 0));
+					const fallbackX = Math.round(data.x || 0);
+					const fallbackY = Math.round(data.y || 0);
+					robot.scrollMouse(fallbackX, fallbackY);
+					console.log("[Robot Worker] 滚轮兜底处理:", {
+						使用兜底逻辑: true,
+						原始x: data.x,
+						原始y: data.y,
+						处理后: { fallbackX, fallbackY },
+						执行结果: "已调用robot.scrollMouse",
+					});
+				} else {
+					console.log("[Robot Worker] 滚轮事件无数据:", {
+						data: data,
+						错误: "没有可用的滚轮数据",
+					});
 				}
 				break;
 

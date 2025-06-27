@@ -1822,10 +1822,20 @@ class ScreenShareApp {
 			}
 		};
 
-		// 阻止右键菜单
+		// 右键菜单事件
 		this.canvasMouseHandlers.contextmenu = (event) => {
 			if (this.isControlEnabled) {
 				event.preventDefault();
+
+				// 发送右键菜单命令
+				const coords = this.getMouseCoords(event);
+				if (coords.valid) {
+					this.sendMouseCommand("contextmenu", coords, {
+						button: 2, // 右键
+						source: "contextmenu-event",
+					});
+					console.log("[Canvas鼠标] 右键菜单事件:", { coords });
+				}
 			}
 		};
 
@@ -2301,6 +2311,21 @@ class ScreenShareApp {
 			// 只在指针锁定模式下处理
 			if (this.isControlEnabled && document.pointerLockElement) {
 				event.preventDefault();
+
+				// 发送右键菜单命令
+				if (this.virtualMousePosition) {
+					const coords = this.calculateCanvasToRemoteCoords(
+						this.virtualMousePosition.x,
+						this.virtualMousePosition.y,
+					);
+					if (coords.valid) {
+						this.sendMouseCommand("contextmenu", coords, {
+							button: 2, // 右键
+							source: "pointer-lock-contextmenu",
+						});
+						console.log("[指针锁定] 右键菜单事件:", { coords });
+					}
+				}
 			}
 		};
 
