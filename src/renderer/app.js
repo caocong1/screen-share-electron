@@ -1722,9 +1722,10 @@ class ScreenShareApp {
 			}
 		};
 
-		// 鼠标按下事件
+		// 鼠标按下事件（仅在普通模式下，非指针锁定模式）
 		this.canvasMouseHandlers.mousedown = (event) => {
-			if (!this.isControlEnabled) return;
+			// 在指针锁定模式下，不处理canvas的鼠标事件，交给专门的指针锁定处理器
+			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
 			this.isDragging = true;
@@ -1732,7 +1733,10 @@ class ScreenShareApp {
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("mousedown", coords, { button: event.button });
+				this.sendMouseCommand("mousedown", coords, {
+					button: event.button,
+					source: "canvas-normal",
+				});
 			}
 
 			// 如果不在指针锁定状态，尝试请求锁定
@@ -1741,9 +1745,10 @@ class ScreenShareApp {
 			}
 		};
 
-		// 鼠标释放事件
+		// 鼠标释放事件（仅在普通模式下，非指针锁定模式）
 		this.canvasMouseHandlers.mouseup = (event) => {
-			if (!this.isControlEnabled) return;
+			// 在指针锁定模式下，不处理canvas的鼠标事件，交给专门的指针锁定处理器
+			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
 			this.isDragging = false;
@@ -1751,18 +1756,25 @@ class ScreenShareApp {
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("mouseup", coords, { button: event.button });
+				this.sendMouseCommand("mouseup", coords, {
+					button: event.button,
+					source: "canvas-normal",
+				});
 			}
 		};
 
-		// 单击事件
+		// 单击事件（仅在普通模式下，非指针锁定模式）
 		this.canvasMouseHandlers.click = (event) => {
-			if (!this.isControlEnabled) return;
+			// 在指针锁定模式下，不处理canvas的鼠标事件，交给专门的指针锁定处理器
+			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
 			const coords = this.getMouseCoords(event);
 			if (coords.valid) {
-				this.sendMouseCommand("mouseclick", coords, { button: event.button });
+				this.sendMouseCommand("mouseclick", coords, {
+					button: event.button,
+					source: "canvas-normal",
+				});
 			}
 		};
 
@@ -1777,12 +1789,22 @@ class ScreenShareApp {
 			}
 		};
 
-		// 滚轮事件
+		// 滚轮事件（仅在普通模式下，非指针锁定模式）
 		this.canvasMouseHandlers.wheel = (event) => {
-			if (!this.isControlEnabled) return;
+			// 在指针锁定模式下，不处理canvas的wheel事件，交给专门的指针锁定处理器
+			if (!this.isControlEnabled || document.pointerLockElement) return;
 			event.preventDefault();
 
 			const coords = this.getMouseCoords(event);
+			console.log("[Canvas鼠标] 滚轮事件:", {
+				coords,
+				deltaX: event.deltaX,
+				deltaY: event.deltaY,
+				deltaZ: event.deltaZ,
+				deltaMode: event.deltaMode,
+				pointerLocked: !!document.pointerLockElement,
+				mode: "normal",
+			});
 			if (coords.valid) {
 				// 转换滚轮增量为标准化的滚动值
 				const scrollX = event.deltaX * 0.1; // 水平滚动（触摸板）
@@ -1795,6 +1817,7 @@ class ScreenShareApp {
 					deltaY: event.deltaY,
 					deltaZ: event.deltaZ,
 					deltaMode: event.deltaMode,
+					source: "canvas-normal",
 				});
 			}
 		};
@@ -2168,6 +2191,119 @@ class ScreenShareApp {
 			}
 		};
 
+		// 指针锁定模式下的滚轮事件处理
+		this.pointerLockWheelHandler = (event) => {
+			// 只在指针锁定模式下处理
+			if (!this.isControlEnabled || !document.pointerLockElement) return;
+
+			event.preventDefault();
+			event.stopPropagation();
+
+			console.log("[指针锁定] 滚轮事件:", {
+				deltaX: event.deltaX,
+				deltaY: event.deltaY,
+				deltaZ: event.deltaZ,
+				deltaMode: event.deltaMode,
+				pointerLocked: !!document.pointerLockElement,
+				virtualMousePosition: this.virtualMousePosition,
+			});
+
+			// 在指针锁定模式下，使用虚拟鼠标位置
+			if (this.virtualMousePosition) {
+				const coords = this.calculateCanvasToRemoteCoords(
+					this.virtualMousePosition.x,
+					this.virtualMousePosition.y,
+				);
+
+				if (coords.valid) {
+					// 转换滚轮增量为标准化的滚动值
+					const scrollX = event.deltaX * 0.1; // 水平滚动（触摸板）
+					const scrollY = event.deltaY * 0.1; // 垂直滚动
+
+					this.sendMouseCommand("scroll", coords, {
+						x: scrollX,
+						y: scrollY,
+						deltaX: event.deltaX,
+						deltaY: event.deltaY,
+						deltaZ: event.deltaZ,
+						deltaMode: event.deltaMode,
+						source: "pointer-lock",
+					});
+				}
+			}
+		};
+
+		// 指针锁定模式下的鼠标按键事件处理
+		this.pointerLockMouseDownHandler = (event) => {
+			// 只在指针锁定模式下处理
+			if (!this.isControlEnabled || !document.pointerLockElement) return;
+			event.preventDefault();
+
+			this.isDragging = true;
+			this.dragButton = event.button;
+
+			if (this.virtualMousePosition) {
+				const coords = this.calculateCanvasToRemoteCoords(
+					this.virtualMousePosition.x,
+					this.virtualMousePosition.y,
+				);
+				if (coords.valid) {
+					this.sendMouseCommand("mousedown", coords, {
+						button: event.button,
+						source: "pointer-lock",
+					});
+				}
+			}
+		};
+
+		this.pointerLockMouseUpHandler = (event) => {
+			// 只在指针锁定模式下处理
+			if (!this.isControlEnabled || !document.pointerLockElement) return;
+			event.preventDefault();
+
+			this.isDragging = false;
+			this.dragButton = null;
+
+			if (this.virtualMousePosition) {
+				const coords = this.calculateCanvasToRemoteCoords(
+					this.virtualMousePosition.x,
+					this.virtualMousePosition.y,
+				);
+				if (coords.valid) {
+					this.sendMouseCommand("mouseup", coords, {
+						button: event.button,
+						source: "pointer-lock",
+					});
+				}
+			}
+		};
+
+		this.pointerLockClickHandler = (event) => {
+			// 只在指针锁定模式下处理
+			if (!this.isControlEnabled || !document.pointerLockElement) return;
+			event.preventDefault();
+
+			if (this.virtualMousePosition) {
+				const coords = this.calculateCanvasToRemoteCoords(
+					this.virtualMousePosition.x,
+					this.virtualMousePosition.y,
+				);
+				if (coords.valid) {
+					this.sendMouseCommand("mouseclick", coords, {
+						button: event.button,
+						source: "pointer-lock",
+					});
+				}
+			}
+		};
+
+		this.pointerLockContextMenuHandler = (event) => {
+			// 只在指针锁定模式下处理
+			if (this.isControlEnabled && document.pointerLockElement) {
+				event.preventDefault();
+			}
+		};
+
 		// 绑定事件
 		document.addEventListener(
 			"pointerlockchange",
@@ -2194,12 +2330,41 @@ class ScreenShareApp {
 		);
 
 		if (this.dom.remoteCanvas) {
+			// 在指针锁定模式下，很多事件需要在document级别监听
+			// 因为pointer lock会改变事件的传播行为
+
+			// 鼠标移动事件绑定到canvas
 			this.dom.remoteCanvas.addEventListener(
 				"mousemove",
 				this.pointerLockMouseMoveHandler,
 				{ passive: false },
 			);
-			// 在指针锁定模式下，为Canvas添加键盘事件监听（用于处理ESC键）
+
+			// 滚轮事件绑定到document，因为在pointer lock模式下canvas可能不会收到wheel事件
+			document.addEventListener("wheel", this.pointerLockWheelHandler, {
+				passive: false,
+			});
+
+			// 鼠标按键事件绑定到document
+			document.addEventListener("mousedown", this.pointerLockMouseDownHandler, {
+				passive: false,
+			});
+
+			document.addEventListener("mouseup", this.pointerLockMouseUpHandler, {
+				passive: false,
+			});
+
+			document.addEventListener("click", this.pointerLockClickHandler, {
+				passive: false,
+			});
+
+			document.addEventListener(
+				"contextmenu",
+				this.pointerLockContextMenuHandler,
+				{ passive: false },
+			);
+
+			// 键盘事件监听（用于处理ESC键）
 			this.dom.remoteCanvas.addEventListener(
 				"keydown",
 				this.pointerLockKeyDownHandler,
@@ -2254,11 +2419,43 @@ class ScreenShareApp {
 			);
 		}
 
+		// 清理document级别的事件监听器
+		if (this.pointerLockWheelHandler) {
+			document.removeEventListener("wheel", this.pointerLockWheelHandler);
+		}
+
+		if (this.pointerLockMouseDownHandler) {
+			document.removeEventListener(
+				"mousedown",
+				this.pointerLockMouseDownHandler,
+			);
+		}
+
+		if (this.pointerLockMouseUpHandler) {
+			document.removeEventListener("mouseup", this.pointerLockMouseUpHandler);
+		}
+
+		if (this.pointerLockClickHandler) {
+			document.removeEventListener("click", this.pointerLockClickHandler);
+		}
+
+		if (this.pointerLockContextMenuHandler) {
+			document.removeEventListener(
+				"contextmenu",
+				this.pointerLockContextMenuHandler,
+			);
+		}
+
 		// 清理引用
 		this.pointerLockChangeHandler = null;
 		this.pointerLockErrorHandler = null;
 		this.pointerLockMouseMoveHandler = null;
 		this.pointerLockKeyDownHandler = null;
+		this.pointerLockWheelHandler = null;
+		this.pointerLockMouseDownHandler = null;
+		this.pointerLockMouseUpHandler = null;
+		this.pointerLockClickHandler = null;
+		this.pointerLockContextMenuHandler = null;
 	}
 
 	// 新增：处理指针锁定模式下的鼠标移动
