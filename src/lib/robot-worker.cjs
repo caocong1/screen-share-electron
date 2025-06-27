@@ -1,6 +1,6 @@
 /**
- * robotjs Worker 线程 - 处理远程控制操作
- * 避免在主线程中执行robotjs操作，提高响应性能
+ * nut.js Worker 线程 - 处理远程控制操作
+ * 避免在主线程中执行nut.js操作，提高响应性能
  */
 
 const {
@@ -14,17 +14,24 @@ if (isMainThread) {
 	throw new Error("此文件应该作为worker线程运行");
 }
 
-let robot;
+let mouse, keyboard, Point, Key, Button, sleep;
 try {
-	robot = require("robotjs");
-	// 优化robot性能设置
-	robot.setMouseDelay(1); // 降低鼠标延迟
-	robot.setKeyboardDelay(5); // 降低键盘延迟
+	const nut = require("@nut-tree/nut-js");
+	mouse = nut.mouse;
+	keyboard = nut.keyboard;
+	Point = nut.Point;
+	Key = nut.Key;
+	Button = nut.Button;
+	sleep = nut.sleep;
+	
+	// 优化nut.js性能设置
+	mouse.config.mouseSpeed = 1000; // 鼠标移动速度
+	keyboard.config.autoDelayMs = 5; // 键盘延迟
 } catch (error) {
-	console.error("[Robot Worker] RobotJS 不可用:", error.message);
+	console.error("[Nut Worker] Nut.js 不可用:", error.message);
 	parentPort.postMessage({
 		type: "error",
-		message: `RobotJS 初始化失败: ${error.message}`,
+		message: `Nut.js 初始化失败: ${error.message}`,
 	});
 	process.exit(1);
 }
@@ -41,7 +48,7 @@ const mouseMoveBuffer = {
 /**
  * 处理鼠标移动的批量优化
  */
-function processPendingMouseMoves() {
+async function processPendingMouseMoves() {
 	if (mouseMoveBuffer.queue.length === 0) return;
 
 	// 只处理最新的坐标，丢弃中间的坐标
@@ -51,7 +58,7 @@ function processPendingMouseMoves() {
 	// 执行实际的鼠标移动
 	try {
 		const coords = transformCoordinates(latestMove.data);
-		robot.moveMouse(coords.x, coords.y);
+		await mouse.move([new Point(coords.x, coords.y)]);
 		mouseMoveBuffer.lastProcessTime = Date.now();
 
 		// 发送处理完成确认
@@ -62,7 +69,7 @@ function processPendingMouseMoves() {
 			timestamp: Date.now(),
 		});
 	} catch (error) {
-		console.error("[Robot Worker] 鼠标移动失败:", error);
+		console.error("[Nut Worker] 鼠标移动失败:", error);
 	}
 }
 
@@ -146,7 +153,7 @@ function transformCoordinates(data) {
 /**
  * 主要的消息处理器
  */
-parentPort.on("message", (message) => {
+parentPort.on("message", async (message) => {
 	try {
 		const { type, data } = message;
 
@@ -162,19 +169,19 @@ parentPort.on("message", (message) => {
 				// 鼠标按下需要立即处理
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const downButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? "left"
+							? Button.Left
 							: data.button === 1
-								? "middle"
-								: "right"
-						: data.button || "left";
-				robot.mouseToggle("down", downButton);
-				console.log("[Robot Worker] 鼠标按下:", {
+								? Button.Middle
+								: Button.Right
+						: Button.Left;
+				await mouse.press(downButton);
+				console.log("[Nut Worker] 鼠标按下:", {
 					button: data.button,
 					mapped: downButton,
 				});
@@ -184,19 +191,19 @@ parentPort.on("message", (message) => {
 			case "mouseup": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const upButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? "left"
+							? Button.Left
 							: data.button === 1
-								? "middle"
-								: "right"
-						: data.button || "left";
-				robot.mouseToggle("up", upButton);
-				console.log("[Robot Worker] 鼠标释放:", {
+								? Button.Middle
+								: Button.Right
+						: Button.Left;
+				await mouse.release(upButton);
+				console.log("[Nut Worker] 鼠标释放:", {
 					button: data.button,
 					mapped: upButton,
 				});
@@ -210,25 +217,25 @@ parentPort.on("message", (message) => {
 					// 只有在非拖拽状态下，或者明确标记为独立点击时才处理click事件
 					if (data.x !== undefined && data.y !== undefined) {
 						const coords = transformCoordinates(data);
-						robot.moveMouse(coords.x, coords.y);
+						await mouse.move([new Point(coords.x, coords.y)]);
 					}
 					// 映射按键值：0=left, 1=middle, 2=right
 					const clickButton =
 						typeof data.button === "number"
 							? data.button === 0
-								? "left"
+								? Button.Left
 								: data.button === 1
-									? "middle"
-									: "right"
-							: data.button || "left";
-					robot.mouseClick(clickButton, false);
-					console.log("[Robot Worker] 鼠标点击:", {
+									? Button.Middle
+									: Button.Right
+							: Button.Left;
+					await mouse.click(clickButton);
+					console.log("[Nut Worker] 鼠标点击:", {
 						button: data.button,
 						mapped: clickButton,
 					});
 				} else {
 					// 拖拽后的click事件被忽略
-					console.log("[Robot Worker] 忽略拖拽后的click事件，防止取消选中");
+					console.log("[Nut Worker] 忽略拖拽后的click事件，防止取消选中");
 				}
 				break;
 			}
@@ -236,19 +243,19 @@ parentPort.on("message", (message) => {
 			case "doubleclick": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const dblClickButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? "left"
+							? Button.Left
 							: data.button === 1
-								? "middle"
-								: "right"
-						: data.button || "left";
-				robot.mouseClick(dblClickButton, true);
-				console.log("[Robot Worker] 双击:", {
+								? Button.Middle
+								: Button.Right
+						: Button.Left;
+				await mouse.doubleClick(dblClickButton);
+				console.log("[Nut Worker] 双击:", {
 					button: data.button,
 					mapped: dblClickButton,
 				});
@@ -258,39 +265,39 @@ parentPort.on("message", (message) => {
 			case "contextmenu":
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
-				robot.mouseClick("right");
+				await mouse.rightClick();
 				break;
 
 			case "longpress": {
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 映射按键值：0=left, 1=middle, 2=right
 				const longPressButton =
 					typeof data.button === "number"
 						? data.button === 0
-							? "left"
+							? Button.Left
 							: data.button === 1
-								? "middle"
-								: "right"
-						: data.button || "left";
-				robot.mouseToggle("down", longPressButton);
-				console.log("[Robot Worker] 长按开始:", {
+								? Button.Middle
+								: Button.Right
+						: Button.Left;
+				await mouse.press(longPressButton);
+				console.log("[Nut Worker] 长按开始:", {
 					button: data.button,
 					mapped: longPressButton,
 				});
-				setTimeout(() => {
-					robot.mouseToggle("up", longPressButton);
-					console.log("[Robot Worker] 长按结束:", { mapped: longPressButton });
+				setTimeout(async () => {
+					await mouse.release(longPressButton);
+					console.log("[Nut Worker] 长按结束:", { mapped: longPressButton });
 				}, 100);
 				break;
 			}
 
 			case "scroll": {
-				console.log("[Robot Worker] 收到滚轮事件:", {
+				console.log("[Nut Worker] 收到滚轮事件:", {
 					deltaX: data.deltaX,
 					deltaY: data.deltaY,
 					deltaMode: data.deltaMode,
@@ -353,7 +360,16 @@ parentPort.on("message", (message) => {
 							// Windows平台使用增强的滚动处理
 							if (process.platform === "win32") {
 								// 主滚动调用
-								robot.scrollMouse(scrollX, scrollY);
+								if (scrollY > 0) {
+									await mouse.scrollDown(Math.abs(scrollY));
+								} else if (scrollY < 0) {
+									await mouse.scrollUp(Math.abs(scrollY));
+								}
+								if (scrollX > 0) {
+									await mouse.scrollRight(Math.abs(scrollX));
+								} else if (scrollX < 0) {
+									await mouse.scrollLeft(Math.abs(scrollX));
+								}
 
 								// 额外的增强滚动（如果scrollY较大，分解为多次小滚动）
 								if (Math.abs(scrollY) > 3) {
@@ -363,20 +379,30 @@ parentPort.on("message", (message) => {
 									);
 									const extraDirection = scrollY > 0 ? 1 : -1;
 									for (let i = 0; i < extraSteps; i++) {
-										setTimeout(
-											() => {
-												robot.scrollMouse(0, extraDirection);
-											},
-											(i + 1) * 15,
-										);
+										setTimeout(async () => {
+											if (extraDirection > 0) {
+												await mouse.scrollDown(1);
+											} else {
+												await mouse.scrollUp(1);
+											}
+										}, (i + 1) * 15);
 									}
 								}
 							} else {
 								// 其他平台标准滚动
-								robot.scrollMouse(scrollX, scrollY);
+								if (scrollY > 0) {
+									await mouse.scrollDown(Math.abs(scrollY));
+								} else if (scrollY < 0) {
+									await mouse.scrollUp(Math.abs(scrollY));
+								}
+								if (scrollX > 0) {
+									await mouse.scrollRight(Math.abs(scrollX));
+								} else if (scrollX < 0) {
+									await mouse.scrollLeft(Math.abs(scrollX));
+								}
 							}
 
-							console.log("[Robot Worker] 滚轮操作成功:", {
+							console.log("[Nut Worker] 滚轮操作成功:", {
 								原始: {
 									deltaX: data.deltaX,
 									deltaY: data.deltaY,
@@ -385,13 +411,13 @@ parentPort.on("message", (message) => {
 								处理后: { scrollX, scrollY },
 								平台: process.platform,
 								增强处理: process.platform === "win32" && Math.abs(scrollY) > 3,
-								执行结果: "已调用robot.scrollMouse",
+								执行结果: "已调用nut.js滚轮方法",
 							});
 						} catch (error) {
-							console.error("[Robot Worker] 滚轮操作失败:", error);
+							console.error("[Nut Worker] 滚轮操作失败:", error);
 						}
 					} else {
-						console.log("[Robot Worker] 滚轮操作跳过:", {
+						console.log("[Nut Worker] 滚轮操作跳过:", {
 							原始: {
 								deltaX: data.deltaX,
 								deltaY: data.deltaY,
@@ -418,37 +444,59 @@ parentPort.on("message", (message) => {
 						// Windows平台尝试多种滚动方式
 						if (process.platform === "win32") {
 							// 方法1：标准滚动
-							robot.scrollMouse(fallbackX, fallbackY);
+							if (fallbackY > 0) {
+								await mouse.scrollDown(Math.abs(fallbackY));
+							} else if (fallbackY < 0) {
+								await mouse.scrollUp(Math.abs(fallbackY));
+							}
+							if (fallbackX > 0) {
+								await mouse.scrollRight(Math.abs(fallbackX));
+							} else if (fallbackX < 0) {
+								await mouse.scrollLeft(Math.abs(fallbackX));
+							}
 
 							// 方法2：如果标准滚动效果不明显，尝试多次小幅滚动
 							if (Math.abs(fallbackY) > 0) {
 								const steps = Math.abs(fallbackY);
 								const direction = fallbackY > 0 ? 1 : -1;
 								for (let i = 0; i < Math.min(steps, 5); i++) {
-									setTimeout(() => {
-										robot.scrollMouse(0, direction);
+									setTimeout(async () => {
+										if (direction > 0) {
+											await mouse.scrollDown(1);
+										} else {
+											await mouse.scrollUp(1);
+										}
 									}, i * 10);
 								}
 							}
 						} else {
 							// 其他平台使用标准滚动
-							robot.scrollMouse(fallbackX, fallbackY);
+							if (fallbackY > 0) {
+								await mouse.scrollDown(Math.abs(fallbackY));
+							} else if (fallbackY < 0) {
+								await mouse.scrollUp(Math.abs(fallbackY));
+							}
+							if (fallbackX > 0) {
+								await mouse.scrollRight(Math.abs(fallbackX));
+							} else if (fallbackX < 0) {
+								await mouse.scrollLeft(Math.abs(fallbackX));
+							}
 						}
 
-						console.log("[Robot Worker] 滚轮兜底处理:", {
+						console.log("[Nut Worker] 滚轮兜底处理:", {
 							使用兜底逻辑: true,
 							原始x: data.x,
 							原始y: data.y,
 							处理后: { fallbackX, fallbackY },
 							平台: process.platform,
 							特殊处理: process.platform === "win32" ? "多次滚动" : "标准滚动",
-							执行结果: "已调用robot.scrollMouse",
+							执行结果: "已调用nut.js滚轮方法",
 						});
 					} catch (error) {
-						console.error("[Robot Worker] 滚轮兜底操作失败:", error);
+						console.error("[Nut Worker] 滚轮兜底操作失败:", error);
 					}
 				} else {
-					console.log("[Robot Worker] 滚轮事件无数据:", {
+					console.log("[Nut Worker] 滚轮事件无数据:", {
 						data: data,
 						错误: "没有可用的滚轮数据",
 					});
@@ -466,9 +514,13 @@ parentPort.on("message", (message) => {
 					const scrollAmount = Math.abs(data.scale - 1) * 5; // 根据缩放比例调整滚动量
 
 					// 模拟Ctrl+滚轮进行缩放
-					robot.keyToggle("control", "down");
-					robot.scrollMouse(0, Math.round(scaleDirection * scrollAmount));
-					robot.keyToggle("control", "up");
+					await keyboard.pressKey(Key.LeftControl);
+					if (scaleDirection > 0) {
+						await mouse.scrollUp(Math.round(scrollAmount));
+					} else {
+						await mouse.scrollDown(Math.round(scrollAmount));
+					}
+					await keyboard.releaseKey(Key.LeftControl);
 				}
 				break;
 
@@ -476,14 +528,14 @@ parentPort.on("message", (message) => {
 				// 触摸开始 - 模拟鼠标按下
 				if (data.x !== undefined && data.y !== undefined) {
 					const coords = transformCoordinates(data);
-					robot.moveMouse(coords.x, coords.y);
+					await mouse.move([new Point(coords.x, coords.y)]);
 				}
 				// 单点触摸模拟左键，多点触摸可以有不同处理
 				if (data.touchCount === 1) {
-					robot.mouseToggle("down", "left");
+					await mouse.press(Button.Left);
 				} else if (data.touchCount === 2) {
 					// 双指触摸可以模拟右键
-					robot.mouseToggle("down", "right");
+					await mouse.press(Button.Right);
 				}
 				break;
 
@@ -499,45 +551,48 @@ parentPort.on("message", (message) => {
 			case "touchend":
 				// 触摸结束 - 模拟鼠标释放
 				if (data.touchCount <= 1) {
-					robot.mouseToggle("up", "left");
+					await mouse.release(Button.Left);
 				} else if (data.touchCount === 2) {
-					robot.mouseToggle("up", "right");
+					await mouse.release(Button.Right);
 				}
 				break;
 
 			case "keydown":
 				if (data.key) {
 					const modifiers = [];
-					if (data.ctrlKey) modifiers.push("control");
-					if (data.altKey) modifiers.push("alt");
-					if (data.shiftKey) modifiers.push("shift");
+					if (data.ctrlKey) modifiers.push(Key.LeftControl);
+					if (data.altKey) modifiers.push(Key.LeftAlt);
+					if (data.shiftKey) modifiers.push(Key.LeftShift);
 					if (data.metaKey)
-						modifiers.push(process.platform === "darwin" ? "command" : "meta");
+						modifiers.push(process.platform === "darwin" ? Key.LeftCmd : Key.LeftMeta);
 
 					const keyMap = {
-						ArrowUp: "up",
-						ArrowDown: "down",
-						ArrowLeft: "left",
-						ArrowRight: "right",
-						Delete: "delete",
-						Backspace: "backspace",
-						Enter: "enter",
-						Tab: "tab",
-						Escape: "escape",
-						Space: "space",
-						CapsLock: "capslock",
-						Control: "control",
-						Alt: "alt",
-						Shift: "shift",
-						Meta: process.platform === "darwin" ? "command" : "meta",
+						ArrowUp: Key.Up,
+						ArrowDown: Key.Down,
+						ArrowLeft: Key.Left,
+						ArrowRight: Key.Right,
+						Delete: Key.Delete,
+						Backspace: Key.Backspace,
+						Enter: Key.Enter,
+						Tab: Key.Tab,
+						Escape: Key.Escape,
+						Space: Key.Space,
+						CapsLock: Key.CapsLock,
+						Control: Key.LeftControl,
+						Alt: Key.LeftAlt,
+						Shift: Key.LeftShift,
+						Meta: process.platform === "darwin" ? Key.LeftCmd : Key.LeftMeta,
 					};
 
-					const robotKey = keyMap[data.key] || data.key.toLowerCase();
+					const nutKey = keyMap[data.key] || data.key.toLowerCase();
 
 					if (modifiers.length > 0) {
-						robot.keyTap(robotKey, modifiers);
+						await keyboard.pressKey(...modifiers);
+						await keyboard.pressKey(nutKey);
+						await keyboard.releaseKey(nutKey);
+						await keyboard.releaseKey(...modifiers.reverse());
 					} else {
-						robot.keyToggle(robotKey, "down");
+						await keyboard.pressKey(nutKey);
 					}
 				}
 				break;
@@ -545,48 +600,67 @@ parentPort.on("message", (message) => {
 			case "keyup":
 				if (data.key) {
 					const keyMap = {
-						ArrowUp: "up",
-						ArrowDown: "down",
-						ArrowLeft: "left",
-						ArrowRight: "right",
-						Delete: "delete",
-						Backspace: "backspace",
-						Enter: "enter",
-						Tab: "tab",
-						Escape: "escape",
-						Space: "space",
-						CapsLock: "capslock",
-						Control: "control",
-						Alt: "alt",
-						Shift: "shift",
-						Meta: process.platform === "darwin" ? "command" : "meta",
+						ArrowUp: Key.Up,
+						ArrowDown: Key.Down,
+						ArrowLeft: Key.Left,
+						ArrowRight: Key.Right,
+						Delete: Key.Delete,
+						Backspace: Key.Backspace,
+						Enter: Key.Enter,
+						Tab: Key.Tab,
+						Escape: Key.Escape,
+						Space: Key.Space,
+						CapsLock: Key.CapsLock,
+						Control: Key.LeftControl,
+						Alt: Key.LeftAlt,
+						Shift: Key.LeftShift,
+						Meta: process.platform === "darwin" ? Key.LeftCmd : Key.LeftMeta,
 					};
 
-					const robotKey = keyMap[data.key] || data.key.toLowerCase();
-					robot.keyToggle(robotKey, "up");
+					const nutKey = keyMap[data.key] || data.key.toLowerCase();
+					await keyboard.releaseKey(nutKey);
 				}
 				break;
 
 			case "keypress":
 				if (data.key) {
-					robot.keyTap(data.key, data.modifiers || []);
+					const modifiers = data.modifiers || [];
+					const keyModifiers = modifiers.map(mod => {
+						switch (mod) {
+							case "control": return Key.LeftControl;
+							case "alt": return Key.LeftAlt;
+							case "shift": return Key.LeftShift;
+							case "meta": return process.platform === "darwin" ? Key.LeftCmd : Key.LeftMeta;
+							default: return mod;
+						}
+					});
+					
+					if (keyModifiers.length > 0) {
+						await keyboard.pressKey(...keyModifiers);
+						await keyboard.pressKey(data.key);
+						await keyboard.releaseKey(data.key);
+						await keyboard.releaseKey(...keyModifiers.reverse());
+					} else {
+						await keyboard.pressKey(data.key);
+						await keyboard.releaseKey(data.key);
+					}
 				}
 				break;
 
 			case "keytype":
 				if (data.text) {
-					robot.typeString(data.text);
+					await keyboard.type(data.text);
 				}
 				break;
 
 			case "shortcut":
 				if (data.key) {
 					const modifiers = [];
-					if (data.ctrlKey) modifiers.push("control");
-					if (data.altKey) modifiers.push("alt");
-					if (data.shiftKey) modifiers.push("shift");
+					if (data.ctrlKey) modifiers.push(Key.LeftControl);
+					if (data.altKey) modifiers.push(Key.LeftAlt);
+					if (data.shiftKey) modifiers.push(Key.LeftShift);
 					if (data.metaKey)
-						modifiers.push(process.platform === "darwin" ? "command" : "meta");
+						modifiers.push(process.platform === "darwin" ? Key.LeftCmd : Key.LeftMeta);
 
 					const keyMap = {
 						c: "c",
@@ -596,44 +670,53 @@ parentPort.on("message", (message) => {
 						y: "y",
 						a: "a",
 						s: "s",
-						tab: "tab",
-						esc: "escape",
+						tab: Key.Tab,
+						esc: Key.Escape,
 						l: "l",
 						d: "d",
 						r: "r",
-						space: "space",
+						space: Key.Space,
 					};
 
-					const robotKey =
-						keyMap[data.key.toLowerCase()] || data.key.toLowerCase();
-					robot.keyTap(robotKey, modifiers);
+					const nutKey = keyMap[data.key.toLowerCase()] || data.key.toLowerCase();
+					
+					if (modifiers.length > 0) {
+						await keyboard.pressKey(...modifiers);
+						await keyboard.pressKey(nutKey);
+						await keyboard.releaseKey(nutKey);
+						await keyboard.releaseKey(...modifiers.reverse());
+					} else {
+						await keyboard.pressKey(nutKey);
+						await keyboard.releaseKey(nutKey);
+					}
 				}
 				break;
 
 			case "functionkey":
 				if (data.key) {
 					const fKeyMap = {
-						F1: "f1",
-						F2: "f2",
-						F3: "f3",
-						F4: "f4",
-						F5: "f5",
-						F6: "f6",
-						F7: "f7",
-						F8: "f8",
-						F9: "f9",
-						F10: "f10",
-						F11: "f11",
-						F12: "f12",
+						F1: Key.F1,
+						F2: Key.F2,
+						F3: Key.F3,
+						F4: Key.F4,
+						F5: Key.F5,
+						F6: Key.F6,
+						F7: Key.F7,
+						F8: Key.F8,
+						F9: Key.F9,
+						F10: Key.F10,
+						F11: Key.F11,
+						F12: Key.F12,
 					};
 
-					const robotKey = fKeyMap[data.key] || data.key.toLowerCase();
-					robot.keyTap(robotKey);
+					const nutKey = fKeyMap[data.key] || data.key.toLowerCase();
+					await keyboard.pressKey(nutKey);
+					await keyboard.releaseKey(nutKey);
 				}
 				break;
 
 			default:
-				console.warn("[Robot Worker] 未知命令类型:", data.type);
+				console.warn("[Nut Worker] 未知命令类型:", data.type);
 		}
 
 		// 发送处理完成确认（除了鼠标移动，那个会在批处理中发送）
@@ -645,7 +728,7 @@ parentPort.on("message", (message) => {
 			});
 		}
 	} catch (error) {
-		console.error("[Robot Worker] 处理失败:", error);
+		console.error("[Nut Worker] 处理失败:", error);
 		parentPort.postMessage({
 			type: "error",
 			message: error.message,
@@ -657,8 +740,8 @@ parentPort.on("message", (message) => {
 // 发送初始化完成消息
 parentPort.postMessage({
 	type: "ready",
-	message: "Robot Worker 已就绪",
+	message: "Nut Worker 已就绪",
 	pid: process.pid,
 });
 
-console.log("[Robot Worker] 启动完成, PID:", process.pid);
+console.log("[Nut Worker] 启动完成, PID:", process.pid);

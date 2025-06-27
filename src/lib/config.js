@@ -7,7 +7,7 @@ export const config = {
 
   // 信令服务器配置
   signaling: {
-    host: 'localhost',
+    host: '10.10.99.233',
     port: 3002,
     path: '/',
     secure: false, // 使用 ws://
