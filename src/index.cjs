@@ -256,6 +256,32 @@ ipcMain.on('remote-control', async (event, data) => {
       }
     }
 
+    // 键盘事件专门的调试日志
+    if (
+      data.type === 'keydown' ||
+      data.type === 'keyup' ||
+      data.type === 'keypress' ||
+      data.type === 'keytype'
+    ) {
+      console.log('[远程控制] 键盘事件:', {
+        type: data.type,
+        key: data.key,
+        code: data.code,
+        text: data.text,
+        modifiers: {
+          ctrl: data.ctrlKey,
+          alt: data.altKey,
+          shift: data.shiftKey,
+          meta: data.metaKey,
+        },
+        clientPlatform: data.clientPlatform,
+        serverPlatform: process.platform,
+        source: data.source,
+        workerReady: robotWorkerReady,
+        workerExists: !!robotWorker,
+      });
+    }
+
     // 输出调试信息（减少频率）
     if (data.type !== 'mousemove' && data.type !== 'mousedrag') {
       console.log('[远程控制] 执行命令:', {
@@ -276,12 +302,27 @@ ipcMain.on('remote-control', async (event, data) => {
 
     // 将命令发送给 Robot Worker 处理
     if (robotWorker && robotWorkerReady) {
+      console.log('[远程控制] 发送命令到Worker:', {
+        type: data.type,
+        isKeyboardEvent: ['keydown', 'keyup', 'keypress', 'keytype'].includes(
+          data.type,
+        ),
+      });
+
       robotWorker.postMessage({
         type: 'command',
         data: data,
       });
+
+      if (['keydown', 'keyup', 'keypress', 'keytype'].includes(data.type)) {
+        console.log('[远程控制] 键盘命令已发送到Worker');
+      }
     } else {
-      console.warn('[远程控制] Robot Worker 未就绪，跳过命令:', data.type);
+      console.warn('[远程控制] Robot Worker 未就绪，跳过命令:', {
+        type: data.type,
+        workerExists: !!robotWorker,
+        workerReady: robotWorkerReady,
+      });
     }
   } catch (error) {
     console.error('[远程控制] 操作失败:', error);
