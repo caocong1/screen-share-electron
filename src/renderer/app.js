@@ -1770,7 +1770,7 @@ class ScreenShareApp {
       const coords = this.getMouseCoords(event);
       if (coords.valid) {
         this.sendMouseCommand('mousedown', coords, {
-          button: event.button,
+          button: this.mapButtonNumberToString(event.button),
           source: 'canvas-normal',
         });
       }
@@ -1793,7 +1793,7 @@ class ScreenShareApp {
       const coords = this.getMouseCoords(event);
       if (coords.valid) {
         this.sendMouseCommand('mouseup', coords, {
-          button: event.button,
+          button: this.mapButtonNumberToString(event.button),
           source: 'canvas-normal',
         });
       }
@@ -1829,7 +1829,7 @@ class ScreenShareApp {
 
       const coords = this.getMouseCoords(event);
       if (coords.valid) {
-        this.sendMouseCommand('doubleclick', coords, { button: event.button });
+        this.sendMouseCommand('doubleclick', coords, { button: this.mapButtonNumberToString(event.button) });
       }
     };
 
@@ -2040,7 +2040,7 @@ class ScreenShareApp {
       // 根据拖拽状态发送不同的事件类型
       const eventType = this.isDragging ? 'mousedrag' : 'mousemove';
       this.sendMouseCommand(eventType, coords, {
-        button: this.dragButton,
+        button: this.mapButtonNumberToString(this.dragButton),
       });
     }
   }
@@ -2312,7 +2312,7 @@ class ScreenShareApp {
         );
         if (coords.valid) {
           this.sendMouseCommand('mousedown', coords, {
-            button: event.button,
+            button: this.mapButtonNumberToString(event.button),
             source: 'pointer-lock',
           });
         }
@@ -2334,7 +2334,7 @@ class ScreenShareApp {
         );
         if (coords.valid) {
           this.sendMouseCommand('mouseup', coords, {
-            button: event.button,
+            button: this.mapButtonNumberToString(event.button),
             source: 'pointer-lock',
           });
         }
@@ -2584,8 +2584,22 @@ class ScreenShareApp {
       // 根据拖拽状态发送不同的事件类型
       const eventType = this.isDragging ? 'mousedrag' : 'mousemove';
       this.sendMouseCommand(eventType, coords, {
-        button: this.dragButton,
+        button: this.mapButtonNumberToString(this.dragButton),
       });
+    }
+  }
+
+  // 新增：按钮数字到字符串的映射方法
+  mapButtonNumberToString(buttonNumber) {
+    switch (buttonNumber) {
+      case 0:
+        return 'left';
+      case 1:
+        return 'middle';
+      case 2:
+        return 'right';
+      default:
+        return 'left'; // 默认左键
     }
   }
 
