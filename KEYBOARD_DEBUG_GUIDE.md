@@ -13,7 +13,7 @@ node debug-keyboard.cjs
 
 这个脚本会自动测试：
 - nutjs库是否正确加载
-- Robot Worker是否正常启动
+- Nut Worker是否正常启动
 - 键盘命令是否能正确处理
 
 ### 2. 检查控制台日志
@@ -63,7 +63,7 @@ pnpm add @nut-tree/nut-js
 3. 重启应用
 
 #### 问题3: Worker未就绪
-**日志特征**: `Robot Worker 未就绪，跳过命令`
+**日志特征**: `Nut Worker 未就绪，跳过命令`
 **解决方案**:
 - 检查worker文件路径是否正确
 - 查看Worker启动错误日志
@@ -100,7 +100,7 @@ pnpm add @nut-tree/nut-js
 如果问题持续存在，可以临时修改代码启用详细日志：
 
 ```javascript
-// 在 robot-worker.cjs 开头添加
+// 在 nut-worker.cjs 开头添加
 console.log = (...args) => {
   const timestamp = new Date().toISOString();
   process.stdout.write(`${timestamp} [Worker] ${args.join(' ')}\n`);

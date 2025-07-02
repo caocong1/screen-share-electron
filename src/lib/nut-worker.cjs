@@ -616,10 +616,12 @@ parentPort.on('message', async (message) => {
             );
 
           const keyMap = {
+            // 方向键
             ArrowUp: Key.Up,
             ArrowDown: Key.Down,
             ArrowLeft: Key.Left,
             ArrowRight: Key.Right,
+            // 功能键
             Delete: Key.Delete,
             Backspace: Key.Backspace,
             Enter: Key.Enter,
@@ -627,13 +629,23 @@ parentPort.on('message', async (message) => {
             Escape: Key.Escape,
             Space: Key.Space,
             CapsLock: Key.CapsLock,
+            // 修饰键
             Control: Key.LeftControl,
             Alt: Key.LeftAlt,
             Shift: Key.LeftShift,
             Meta: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
+            // 字母键
+            'a': Key.A, 'b': Key.B, 'c': Key.C, 'd': Key.D, 'e': Key.E,
+            'f': Key.F, 'g': Key.G, 'h': Key.H, 'i': Key.I, 'j': Key.J,
+            'k': Key.K, 'l': Key.L, 'm': Key.M, 'n': Key.N, 'o': Key.O,
+            'p': Key.P, 'q': Key.Q, 'r': Key.R, 's': Key.S, 't': Key.T,
+            'u': Key.U, 'v': Key.V, 'w': Key.W, 'x': Key.X, 'y': Key.Y, 'z': Key.Z,
+            // 数字键
+            '0': Key.D0, '1': Key.D1, '2': Key.D2, '3': Key.D3, '4': Key.D4,
+            '5': Key.D5, '6': Key.D6, '7': Key.D7, '8': Key.D8, '9': Key.D9,
           };
 
-          const nutKey = keyMap[data.key] || data.key.toLowerCase();
+          const nutKey = keyMap[data.key] || data.key;
 
           console.log('[Nut Worker] 键位映射:', {
             原始key: data.key,
@@ -692,10 +704,12 @@ parentPort.on('message', async (message) => {
 
         if (data.key) {
           const keyMap = {
+            // 方向键
             ArrowUp: Key.Up,
             ArrowDown: Key.Down,
             ArrowLeft: Key.Left,
             ArrowRight: Key.Right,
+            // 功能键
             Delete: Key.Delete,
             Backspace: Key.Backspace,
             Enter: Key.Enter,
@@ -703,13 +717,23 @@ parentPort.on('message', async (message) => {
             Escape: Key.Escape,
             Space: Key.Space,
             CapsLock: Key.CapsLock,
+            // 修饰键
             Control: Key.LeftControl,
             Alt: Key.LeftAlt,
             Shift: Key.LeftShift,
             Meta: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
+            // 字母键
+            'a': Key.A, 'b': Key.B, 'c': Key.C, 'd': Key.D, 'e': Key.E,
+            'f': Key.F, 'g': Key.G, 'h': Key.H, 'i': Key.I, 'j': Key.J,
+            'k': Key.K, 'l': Key.L, 'm': Key.M, 'n': Key.N, 'o': Key.O,
+            'p': Key.P, 'q': Key.Q, 'r': Key.R, 's': Key.S, 't': Key.T,
+            'u': Key.U, 'v': Key.V, 'w': Key.W, 'x': Key.X, 'y': Key.Y, 'z': Key.Z,
+            // 数字键
+            '0': Key.D0, '1': Key.D1, '2': Key.D2, '3': Key.D3, '4': Key.D4,
+            '5': Key.D5, '6': Key.D6, '7': Key.D7, '8': Key.D8, '9': Key.D9,
           };
 
-          const nutKey = keyMap[data.key] || data.key.toLowerCase();
+          const nutKey = keyMap[data.key] || data.key;
 
           console.log('[Nut Worker] keyup键位映射:', {
             原始key: data.key,

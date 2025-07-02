@@ -11,9 +11,9 @@ const path = require('node:path');
 const { v4: uuidv4 } = require('uuid');
 const { Worker } = require('worker_threads');
 
-// Robot Worker 管理
-let robotWorker = null;
-let robotWorkerReady = false;
+// Nut Worker 管理
+let nutWorker = null;
+let nutWorkerReady = false;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -175,24 +175,24 @@ ipcMain.handle('get-desktop-sources', async () => {
 });
 
 /**
- * 初始化 Robot Worker
+ * 初始化 Nut Worker
  */
-function initRobotWorker() {
-  if (robotWorker) {
+function initNutWorker() {
+  if (nutWorker) {
     return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {
     try {
-      const workerPath = path.join(__dirname, 'lib', 'robot-worker.cjs');
-      robotWorker = new Worker(workerPath);
+      const workerPath = path.join(__dirname, 'lib', 'nut-worker.cjs');
+      nutWorker = new Worker(workerPath);
 
-      robotWorker.on('message', (message) => {
+      nutWorker.on('message', (message) => {
         switch (message.type) {
           case 'ready':
-            robotWorkerReady = true;
+            nutWorkerReady = true;
             console.log(
-              '[Robot Worker] 已就绪:',
+              '[Nut Worker] 已就绪:',
               message.message,
               'PID:',
               message.pid,
@@ -204,54 +204,54 @@ function initRobotWorker() {
             // 可选：记录处理完成的操作
             if (Math.random() < 0.001) {
               // 偶尔记录，避免日志过多
-              console.log('[Robot Worker] 处理完成:', message.originalType);
+              console.log('[Nut Worker] 处理完成:', message.originalType);
             }
             break;
 
           case 'error':
-            console.error('[Robot Worker] 处理错误:', message.message);
+            console.error('[Nut Worker] 处理错误:', message.message);
             break;
         }
       });
 
-      robotWorker.on('error', (error) => {
-        console.error('[Robot Worker] Worker错误:', error);
-        robotWorkerReady = false;
+      nutWorker.on('error', (error) => {
+        console.error('[Nut Worker] Worker错误:', error);
+        nutWorkerReady = false;
       });
 
-      robotWorker.on('exit', (code) => {
-        console.log('[Robot Worker] Worker退出，代码:', code);
-        robotWorkerReady = false;
-        robotWorker = null;
+      nutWorker.on('exit', (code) => {
+        console.log('[Nut Worker] Worker退出，代码:', code);
+        nutWorkerReady = false;
+        nutWorker = null;
       });
     } catch (error) {
-      console.error('[Robot Worker] 初始化失败:', error);
+      console.error('[Nut Worker] 初始化失败:', error);
       reject(error);
     }
   });
 }
 
 /**
- * 清理 Robot Worker
+ * 清理 Nut Worker
  */
-function cleanupRobotWorker() {
-  if (robotWorker) {
-    console.log('[Robot Worker] 正在关闭...');
-    robotWorker.terminate();
-    robotWorker = null;
-    robotWorkerReady = false;
+function cleanupNutWorker() {
+  if (nutWorker) {
+    console.log('[Nut Worker] 正在关闭...');
+    nutWorker.terminate();
+    nutWorker = null;
+    nutWorkerReady = false;
   }
 }
 
 // 远程控制事件处理 - 使用 Worker 优化
 ipcMain.on('remote-control', async (event, data) => {
   try {
-    // 确保 Robot Worker 已初始化
-    if (!robotWorkerReady) {
+    // 确保 Nut Worker 已初始化
+    if (!nutWorkerReady) {
       try {
-        await initRobotWorker();
+        await initNutWorker();
       } catch (error) {
-        console.error('[远程控制] Robot Worker 初始化失败:', error);
+        console.error('[远程控制] Nut Worker 初始化失败:', error);
         return;
       }
     }
@@ -277,8 +277,8 @@ ipcMain.on('remote-control', async (event, data) => {
         clientPlatform: data.clientPlatform,
         serverPlatform: process.platform,
         source: data.source,
-        workerReady: robotWorkerReady,
-        workerExists: !!robotWorker,
+        workerReady: nutWorkerReady,
+        workerExists: !!nutWorker,
       });
     }
 
@@ -300,8 +300,8 @@ ipcMain.on('remote-control', async (event, data) => {
       });
     }
 
-    // 将命令发送给 Robot Worker 处理
-    if (robotWorker && robotWorkerReady) {
+    // 将命令发送给 Nut Worker 处理
+    if (nutWorker && nutWorkerReady) {
       console.log('[远程控制] 发送命令到Worker:', {
         type: data.type,
         isKeyboardEvent: ['keydown', 'keyup', 'keypress', 'keytype'].includes(
@@ -309,7 +309,7 @@ ipcMain.on('remote-control', async (event, data) => {
         ),
       });
 
-      robotWorker.postMessage({
+      nutWorker.postMessage({
         type: 'command',
         data: data,
       });
@@ -318,10 +318,10 @@ ipcMain.on('remote-control', async (event, data) => {
         console.log('[远程控制] 键盘命令已发送到Worker');
       }
     } else {
-      console.warn('[远程控制] Robot Worker 未就绪，跳过命令:', {
+      console.warn('[远程控制] Nut Worker 未就绪，跳过命令:', {
         type: data.type,
-        workerExists: !!robotWorker,
-        workerReady: robotWorkerReady,
+        workerExists: !!nutWorker,
+        workerReady: nutWorkerReady,
       });
     }
   } catch (error) {
@@ -421,13 +421,13 @@ app.whenReady().then(async () => {
   // 创建主窗口
   createWindow();
 
-  // 预初始化 Robot Worker（提前准备，避免首次使用时的延迟）
+  // 预初始化 Nut Worker（提前准备，避免首次使用时的延迟）
   try {
-    await initRobotWorker();
-    console.log('[应用初始化] Robot Worker 预初始化完成');
+    await initNutWorker();
+    console.log('[应用初始化] Nut Worker 预初始化完成');
   } catch (error) {
     console.warn(
-      '[应用初始化] Robot Worker 预初始化失败，将在需要时重试:',
+      '[应用初始化] Nut Worker 预初始化失败，将在需要时重试:',
       error.message,
     );
   }
@@ -461,8 +461,8 @@ app.on('will-quit', () => {
   // 取消注册所有快捷键
   globalShortcut.unregisterAll();
 
-  // 清理 Robot Worker
-  cleanupRobotWorker();
+  // 清理 Nut Worker
+  cleanupNutWorker();
 });
 
 // 错误处理

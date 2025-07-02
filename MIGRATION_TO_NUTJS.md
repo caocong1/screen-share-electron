@@ -91,7 +91,7 @@ await keyboard.releaseKey("a", Key.LeftControl);
 ## 文件变更
 
 ### 主要文件
-- `src/lib/robot-worker.cjs`: 完全重写为使用 Nut.js
+- `src/lib/nut-worker.cjs`: 完全重写为使用 Nut.js
 - `package.json`: 更新依赖
 - `docs/performance-optimizations.md`: 更新文档
 

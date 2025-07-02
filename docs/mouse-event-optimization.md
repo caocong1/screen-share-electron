@@ -25,7 +25,7 @@
 
 ## 修改内容
 
-### 1. 后端 Worker (`src/lib/robot-worker.cjs`)
+### 1. 后端 Worker (`src/lib/nut-worker.cjs`)
 - 移除了 `mouseclick` 事件的处理逻辑
 - 保留了 `mousedown` 和 `mouseup` 的完整处理
 
