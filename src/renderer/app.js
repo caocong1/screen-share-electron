@@ -215,6 +215,9 @@ class ScreenShareApp {
     this.globalKeyDownHandler = null;
     this.globalKeyUpHandler = null;
 
+    // 添加全局快捷键监听器（始终活跃，用于监听启用控制等快捷键）
+    this.globalShortcutHandler = null;
+
     // Canvas鼠标事件监听器引用
     this.canvasMouseHandlers = {
       mousemove: null,
@@ -236,7 +239,14 @@ class ScreenShareApp {
 
     this.initDomElements();
     this.bindUIEvents();
+    this.bindGlobalShortcuts(); // 添加全局快捷键监听
     this.initAppAndConnect();
+
+    // 页面卸载时清理事件监听器
+    window.addEventListener('beforeunload', () => {
+      this.unbindGlobalShortcuts();
+      this.disableGlobalKeyboardControl();
+    });
   }
 
   initDomElements() {
@@ -280,14 +290,7 @@ class ScreenShareApp {
       debugInfo: document.getElementById('debugInfo'),
       // Fullscreen elements
       videoContainer: document.getElementById('videoContainer'),
-      fullscreenControls: document.getElementById('fullscreenControls'),
-      fullscreenToggleControl: document.getElementById(
-        'fullscreenToggleControl',
-      ),
-      fullscreenExitFullscreen: document.getElementById(
-        'fullscreenExitFullscreen',
-      ),
-      fullscreenStopViewing: document.getElementById('fullscreenStopViewing'),
+
       // Pointer lock elements
       pointerLockHint: document.getElementById('pointerLockHint'),
     };
@@ -399,6 +402,61 @@ class ScreenShareApp {
           this.dom.pointerLockHint.classList.remove('show');
         }
       });
+    }
+  }
+
+  // 绑定全局快捷键（始终活跃，即使控制未启用）
+  bindGlobalShortcuts() {
+    // 如果已经绑定过，先解绑避免重复
+    this.unbindGlobalShortcuts();
+
+    this.globalShortcutHandler = (e) => {
+      // 防止在输入框中触发全局快捷键
+      if (this.isInputElement(e.target)) {
+        return;
+      }
+
+      // 监听启用控制的快捷键：Ctrl+Shift+C
+      if (e.key === 'C' && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        if (!this.isControlEnabled) {
+          // 当前未启用控制，快捷键用于启用控制
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[全局快捷键] Ctrl+Shift+C 启用控制模式');
+          this.updateAppStatus('通过快捷键启用控制模式');
+          this.toggleRemoteControl();
+          return;
+        }
+        // 如果已启用控制，则继续让handleGlobalKeyDown处理，传输到被控端
+      }
+
+      // 监听全屏快捷键（当控制未启用时）
+      if (
+        !this.isControlEnabled &&
+        (e.key === 'F11' ||
+          (e.key === 'f' && e.altKey) ||
+          (e.key === 'Enter' && e.altKey))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[全局快捷键] 全屏快捷键触发本地全屏切换');
+        this.updateAppStatus('快捷键切换全屏模式');
+        this.toggleFullscreen();
+        return;
+      }
+    };
+
+    // 在文档级别添加全局快捷键监听器
+    document.addEventListener('keydown', this.globalShortcutHandler, true);
+    console.log('[全局快捷键] 已启用全局快捷键监听');
+  }
+
+  // 移除全局快捷键监听
+  unbindGlobalShortcuts() {
+    if (this.globalShortcutHandler) {
+      document.removeEventListener('keydown', this.globalShortcutHandler, true);
+      this.globalShortcutHandler = null;
+      console.log('[全局快捷键] 已移除全局快捷键监听');
     }
   }
 
@@ -1126,8 +1184,42 @@ class ScreenShareApp {
       return;
     }
 
+    // 特殊处理 Ctrl+Shift+C - 当控制启用时，传输到被控端而不是本地处理
+    if (e.key === 'C' && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+      console.log('[快捷键] 控制启用状态下，传输 Ctrl+Shift+C 到被控端');
+      this.updateAppStatus('传输控制快捷键到远程端');
+      // 继续执行下面的传输逻辑
+    }
+
+    // 特殊处理全屏快捷键 - 根据当前状态决定是本地处理还是传输
+    if (
+      e.key === 'F11' ||
+      (e.key === 'f' && e.altKey) ||
+      (e.key === 'Enter' && e.altKey)
+    ) {
+      const isCurrentlyFullscreen = !!document.fullscreenElement;
+
+      if (!isCurrentlyFullscreen) {
+        // 当前是窗口模式，按全屏快捷键应该让本地应用全屏
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[快捷键] 全屏快捷键触发本地全屏切换');
+        this.updateAppStatus('进入全屏模式');
+        this.toggleFullscreen();
+        return;
+      } else {
+        // 当前已经是全屏模式，全屏快捷键应该传输到被控端
+        e.preventDefault(); // 阻止浏览器的默认全屏行为
+        e.stopPropagation();
+        console.log('[快捷键] 全屏模式下，传输全屏快捷键到被控端');
+        this.updateAppStatus('传输全屏快捷键到远程端');
+        // 继续执行下面的逻辑，将快捷键传输到被控端
+      }
+    }
+
     // 某些特殊键需要阻止默认行为
-    const specialKeys = ['Tab', 'F5', 'F11', 'F12', 'Alt', 'Control', 'Meta'];
+    // 注意：F11已在上面特殊处理，这里不再包含
+    const specialKeys = ['Tab', 'F5', 'F12', 'Alt', 'Control', 'Meta'];
     if (specialKeys.includes(e.key) || e.ctrlKey || e.altKey || e.metaKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -1474,11 +1566,8 @@ class ScreenShareApp {
 
       if (isFullscreen) {
         // 进入全屏模式
-        this.setupFullscreenMouseTracking();
-        this.updateFullscreenControlsState();
       } else {
         // 退出全屏模式
-        this.cleanupFullscreenMouseTracking();
       }
     };
 
@@ -1490,174 +1579,6 @@ class ScreenShareApp {
     );
     document.addEventListener('mozfullscreenchange', fullscreenChangeHandler);
     document.addEventListener('MSFullscreenChange', fullscreenChangeHandler);
-
-    // 绑定全屏控制按钮事件
-    if (this.dom.fullscreenToggleControl) {
-      this.dom.fullscreenToggleControl.onclick = () => {
-        this.toggleRemoteControl();
-        this.updateFullscreenControlsState();
-      };
-    }
-
-    if (this.dom.fullscreenExitFullscreen) {
-      this.dom.fullscreenExitFullscreen.onclick = () => {
-        this.toggleFullscreen();
-      };
-    }
-
-    if (this.dom.fullscreenStopViewing) {
-      this.dom.fullscreenStopViewing.onclick = () => {
-        this.stopViewing();
-      };
-    }
-  }
-
-  setupFullscreenMouseTracking() {
-    // 鼠标移动超时定时器
-    this.fullscreenMouseTimer = null;
-    this.fullscreenMouseTimeout = 3000; // 3秒后隐藏控制面板
-
-    const showControls = () => {
-      if (this.dom.fullscreenControls) {
-        this.dom.fullscreenControls.classList.add('show');
-      }
-    };
-
-    const hideControls = () => {
-      if (this.dom.fullscreenControls) {
-        this.dom.fullscreenControls.classList.remove('show');
-      }
-    };
-
-    const resetMouseTimer = () => {
-      showControls();
-
-      if (this.fullscreenMouseTimer) {
-        clearTimeout(this.fullscreenMouseTimer);
-      }
-
-      this.fullscreenMouseTimer = setTimeout(() => {
-        hideControls();
-      }, this.fullscreenMouseTimeout);
-    };
-
-    // 鼠标移动事件处理
-    this.fullscreenMouseMoveHandler = (e) => {
-      // 检查鼠标是否在边缘区域（右上角100px范围内）
-      const edgeSize = 100;
-      const isInControlArea =
-        e.clientX > window.innerWidth - edgeSize && e.clientY < edgeSize;
-
-      if (isInControlArea) {
-        showControls();
-        if (this.fullscreenMouseTimer) {
-          clearTimeout(this.fullscreenMouseTimer);
-          this.fullscreenMouseTimer = null;
-        }
-      } else {
-        resetMouseTimer();
-      }
-    };
-
-    // 鼠标离开事件处理
-    this.fullscreenMouseLeaveHandler = () => {
-      hideControls();
-      if (this.fullscreenMouseTimer) {
-        clearTimeout(this.fullscreenMouseTimer);
-        this.fullscreenMouseTimer = null;
-      }
-    };
-
-    // 控制面板悬停事件
-    this.fullscreenControlsMouseEnter = () => {
-      if (this.fullscreenMouseTimer) {
-        clearTimeout(this.fullscreenMouseTimer);
-        this.fullscreenMouseTimer = null;
-      }
-    };
-
-    this.fullscreenControlsMouseLeave = () => {
-      resetMouseTimer();
-    };
-
-    // 绑定事件
-    if (this.dom.videoContainer) {
-      this.dom.videoContainer.addEventListener(
-        'mousemove',
-        this.fullscreenMouseMoveHandler,
-      );
-      this.dom.videoContainer.addEventListener(
-        'mouseleave',
-        this.fullscreenMouseLeaveHandler,
-      );
-    }
-
-    if (this.dom.fullscreenControls) {
-      this.dom.fullscreenControls.addEventListener(
-        'mouseenter',
-        this.fullscreenControlsMouseEnter,
-      );
-      this.dom.fullscreenControls.addEventListener(
-        'mouseleave',
-        this.fullscreenControlsMouseLeave,
-      );
-    }
-
-    // 初始显示控制面板，然后设置定时器隐藏
-    resetMouseTimer();
-  }
-
-  cleanupFullscreenMouseTracking() {
-    // 清理定时器
-    if (this.fullscreenMouseTimer) {
-      clearTimeout(this.fullscreenMouseTimer);
-      this.fullscreenMouseTimer = null;
-    }
-
-    // 移除事件监听器
-    if (this.dom.videoContainer && this.fullscreenMouseMoveHandler) {
-      this.dom.videoContainer.removeEventListener(
-        'mousemove',
-        this.fullscreenMouseMoveHandler,
-      );
-      this.dom.videoContainer.removeEventListener(
-        'mouseleave',
-        this.fullscreenMouseLeaveHandler,
-      );
-    }
-
-    if (this.dom.fullscreenControls) {
-      this.dom.fullscreenControls.removeEventListener(
-        'mouseenter',
-        this.fullscreenControlsMouseEnter,
-      );
-      this.dom.fullscreenControls.removeEventListener(
-        'mouseleave',
-        this.fullscreenControlsMouseLeave,
-      );
-    }
-
-    // 隐藏控制面板
-    if (this.dom.fullscreenControls) {
-      this.dom.fullscreenControls.classList.remove('show');
-    }
-  }
-
-  updateFullscreenControlsState() {
-    if (!this.dom.fullscreenControls || !document.fullscreenElement) return;
-
-    // 更新控制按钮状态
-    if (this.dom.fullscreenToggleControl) {
-      const icon = this.dom.fullscreenToggleControl.querySelector('.btn-icon');
-      if (icon) {
-        icon.textContent = this.isControlEnabled ? '✅' : '🎮';
-      }
-      if (this.isControlEnabled) {
-        this.dom.fullscreenToggleControl.classList.add('control-enabled');
-      } else {
-        this.dom.fullscreenToggleControl.classList.remove('control-enabled');
-      }
-    }
   }
 
   // 判断是否为窗口共享（现在只支持屏幕分享，始终返回false）
