@@ -171,6 +171,147 @@ function transformCoordinates(data) {
 }
 
 /**
+ * 完整的键盘映射表
+ * 映射浏览器键盘事件到Nut.js Key枚举
+ */
+function getKeyMap() {
+  return {
+    // 功能键
+    Escape: Key.Escape,
+    F1: Key.F1, F2: Key.F2, F3: Key.F3, F4: Key.F4,
+    F5: Key.F5, F6: Key.F6, F7: Key.F7, F8: Key.F8,
+    F9: Key.F9, F10: Key.F10, F11: Key.F11, F12: Key.F12,
+    F13: Key.F13, F14: Key.F14, F15: Key.F15, F16: Key.F16,
+    F17: Key.F17, F18: Key.F18, F19: Key.F19, F20: Key.F20,
+    F21: Key.F21, F22: Key.F22, F23: Key.F23, F24: Key.F24,
+    Print: Key.Print,
+    ScrollLock: Key.ScrollLock,
+    Pause: Key.Pause,
+    
+    // 数字键行
+    '`': Key.Grave,
+    '1': Key.Num1, '2': Key.Num2, '3': Key.Num3, '4': Key.Num4, '5': Key.Num5,
+    '6': Key.Num6, '7': Key.Num7, '8': Key.Num8, '9': Key.Num9, '0': Key.Num0,
+    '-': Key.Minus, '=': Key.Equal,
+    Backspace: Key.Backspace,
+    
+    // 编辑键
+    Insert: Key.Insert,
+    Home: Key.Home,
+    PageUp: Key.PageUp,
+    Delete: Key.Delete,
+    End: Key.End,
+    PageDown: Key.PageDown,
+    
+    // 数字键盘
+    NumLock: Key.NumLock,
+    '/': Key.Divide,
+    '*': Key.Multiply,
+    '+': Key.Add,
+    'Divide': Key.Divide,
+    'Subtract': Key.Subtract,
+    'Numpad7': Key.NumPad7, 'Numpad8': Key.NumPad8, 'Numpad9': Key.NumPad9,
+    'Numpad4': Key.NumPad4, 'Numpad5': Key.NumPad5, 'Numpad6': Key.NumPad6,
+    'Numpad1': Key.NumPad1, 'Numpad2': Key.NumPad2, 'Numpad3': Key.NumPad3,
+    'Numpad0': Key.NumPad0, 'NumpadDecimal': Key.Decimal,
+    Clear: Key.Clear,
+    
+    // 字母键
+    Tab: Key.Tab,
+    'q': Key.Q, 'w': Key.W, 'e': Key.E, 'r': Key.R, 't': Key.T,
+    'y': Key.Y, 'u': Key.U, 'i': Key.I, 'o': Key.O, 'p': Key.P,
+    '[': Key.LeftBracket, ']': Key.RightBracket, '\\': Key.Backslash,
+    
+    CapsLock: Key.CapsLock,
+    'a': Key.A, 's': Key.S, 'd': Key.D, 'f': Key.F, 'g': Key.G,
+    'h': Key.H, 'j': Key.J, 'k': Key.K, 'l': Key.L,
+    ';': Key.Semicolon, "'": Key.Quote,
+    Enter: Key.Enter,
+    
+    // 修饰键
+    Shift: Key.LeftShift,
+    'z': Key.Z, 'x': Key.X, 'c': Key.C, 'v': Key.V, 'b': Key.B,
+    'n': Key.N, 'm': Key.M, ',': Key.Comma, '.': Key.Period, '/': Key.Slash,
+    RightShift: Key.RightShift,
+    
+    // 控制键
+    Control: Key.LeftControl,
+    Alt: Key.LeftAlt,
+    Meta: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftSuper,
+    Space: Key.Space,
+    RightAlt: Key.RightAlt,
+    RightSuper: process.platform === 'darwin' ? Key.RightCmd : Key.RightSuper,
+    Menu: Key.Menu,
+    RightControl: Key.RightControl,
+    Fn: Key.Fn,
+    
+    // 方向键
+    ArrowUp: Key.Up,
+    ArrowDown: Key.Down,
+    ArrowLeft: Key.Left,
+    ArrowRight: Key.Right,
+    
+    // 音频控制键
+    AudioMute: Key.AudioMute,
+    AudioVolDown: Key.AudioVolDown,
+    AudioVolUp: Key.AudioVolUp,
+    AudioPlay: Key.AudioPlay,
+    AudioStop: Key.AudioStop,
+    AudioPause: Key.AudioPause,
+    AudioPrev: Key.AudioPrev,
+    AudioNext: Key.AudioNext,
+    AudioRewind: Key.AudioRewind,
+    AudioForward: Key.AudioForward,
+    AudioRepeat: Key.AudioRepeat,
+    AudioRandom: Key.AudioRandom,
+    
+    // 特殊键映射
+    'Return': Key.Return,
+    'LeftWin': Key.LeftWin,
+    'LeftCmd': Key.LeftCmd,
+    'RightWin': Key.RightWin,
+    'RightCmd': Key.RightCmd,
+    
+    // 额外的浏览器键盘事件映射
+    'ContextMenu': Key.Menu,
+    'NumLock': Key.NumLock,
+    'ScrollLock': Key.ScrollLock,
+    'Pause': Key.Pause,
+    'PrintScreen': Key.Print,
+    'Insert': Key.Insert,
+    'Home': Key.Home,
+    'PageUp': Key.PageUp,
+    'PageDown': Key.PageDown,
+    'End': Key.End,
+    'Delete': Key.Delete,
+    'Backspace': Key.Backspace,
+    'Tab': Key.Tab,
+    'Enter': Key.Enter,
+    'Escape': Key.Escape,
+    'Space': Key.Space,
+    'CapsLock': Key.CapsLock,
+    'Shift': Key.LeftShift,
+    'Control': Key.LeftControl,
+    'Alt': Key.LeftAlt,
+    'Meta': process.platform === 'darwin' ? Key.LeftCmd : Key.LeftSuper,
+    
+    // 方向键的替代名称
+    'Up': Key.Up,
+    'Down': Key.Down,
+    'Left': Key.Left,
+    'Right': Key.Right,
+    
+    // 功能键的替代名称
+    'F1': Key.F1, 'F2': Key.F2, 'F3': Key.F3, 'F4': Key.F4,
+    'F5': Key.F5, 'F6': Key.F6, 'F7': Key.F7, 'F8': Key.F8,
+    'F9': Key.F9, 'F10': Key.F10, 'F11': Key.F11, 'F12': Key.F12,
+    'F13': Key.F13, 'F14': Key.F14, 'F15': Key.F15, 'F16': Key.F16,
+    'F17': Key.F17, 'F18': Key.F18, 'F19': Key.F19, 'F20': Key.F20,
+    'F21': Key.F21, 'F22': Key.F22, 'F23': Key.F23, 'F24': Key.F24,
+  };
+}
+
+/**
  * 主要的消息处理器
  */
 parentPort.on('message', async (message) => {
@@ -615,36 +756,7 @@ parentPort.on('message', async (message) => {
               process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
             );
 
-          const keyMap = {
-            // 方向键
-            ArrowUp: Key.Up,
-            ArrowDown: Key.Down,
-            ArrowLeft: Key.Left,
-            ArrowRight: Key.Right,
-            // 功能键
-            Delete: Key.Delete,
-            Backspace: Key.Backspace,
-            Enter: Key.Enter,
-            Tab: Key.Tab,
-            Escape: Key.Escape,
-            Space: Key.Space,
-            CapsLock: Key.CapsLock,
-            // 修饰键
-            Control: Key.LeftControl,
-            Alt: Key.LeftAlt,
-            Shift: Key.LeftShift,
-            Meta: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
-            // 字母键
-            'a': Key.A, 'b': Key.B, 'c': Key.C, 'd': Key.D, 'e': Key.E,
-            'f': Key.F, 'g': Key.G, 'h': Key.H, 'i': Key.I, 'j': Key.J,
-            'k': Key.K, 'l': Key.L, 'm': Key.M, 'n': Key.N, 'o': Key.O,
-            'p': Key.P, 'q': Key.Q, 'r': Key.R, 's': Key.S, 't': Key.T,
-            'u': Key.U, 'v': Key.V, 'w': Key.W, 'x': Key.X, 'y': Key.Y, 'z': Key.Z,
-            // 数字键
-            '0': Key.D0, '1': Key.D1, '2': Key.D2, '3': Key.D3, '4': Key.D4,
-            '5': Key.D5, '6': Key.D6, '7': Key.D7, '8': Key.D8, '9': Key.D9,
-          };
-
+          const keyMap = getKeyMap();
           const nutKey = keyMap[data.key] || data.key;
 
           console.log('[Nut Worker] 键位映射:', {
@@ -703,36 +815,7 @@ parentPort.on('message', async (message) => {
         });
 
         if (data.key) {
-          const keyMap = {
-            // 方向键
-            ArrowUp: Key.Up,
-            ArrowDown: Key.Down,
-            ArrowLeft: Key.Left,
-            ArrowRight: Key.Right,
-            // 功能键
-            Delete: Key.Delete,
-            Backspace: Key.Backspace,
-            Enter: Key.Enter,
-            Tab: Key.Tab,
-            Escape: Key.Escape,
-            Space: Key.Space,
-            CapsLock: Key.CapsLock,
-            // 修饰键
-            Control: Key.LeftControl,
-            Alt: Key.LeftAlt,
-            Shift: Key.LeftShift,
-            Meta: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
-            // 字母键
-            'a': Key.A, 'b': Key.B, 'c': Key.C, 'd': Key.D, 'e': Key.E,
-            'f': Key.F, 'g': Key.G, 'h': Key.H, 'i': Key.I, 'j': Key.J,
-            'k': Key.K, 'l': Key.L, 'm': Key.M, 'n': Key.N, 'o': Key.O,
-            'p': Key.P, 'q': Key.Q, 'r': Key.R, 's': Key.S, 't': Key.T,
-            'u': Key.U, 'v': Key.V, 'w': Key.W, 'x': Key.X, 'y': Key.Y, 'z': Key.Z,
-            // 数字键
-            '0': Key.D0, '1': Key.D1, '2': Key.D2, '3': Key.D3, '4': Key.D4,
-            '5': Key.D5, '6': Key.D6, '7': Key.D7, '8': Key.D8, '9': Key.D9,
-          };
-
+          const keyMap = getKeyMap();
           const nutKey = keyMap[data.key] || data.key;
 
           console.log('[Nut Worker] keyup键位映射:', {
@@ -855,21 +938,7 @@ parentPort.on('message', async (message) => {
               process.platform === 'darwin' ? Key.LeftCmd : Key.LeftMeta,
             );
 
-          const keyMap = {
-            c: 'c',
-            v: 'v',
-            x: 'x',
-            z: 'z',
-            y: 'y',
-            a: 'a',
-            s: 's',
-            tab: Key.Tab,
-            esc: Key.Escape,
-            l: 'l',
-            d: 'd',
-            r: 'r',
-            space: Key.Space,
-          };
+          const keyMap = getKeyMap();
 
           const nutKey =
             keyMap[data.key.toLowerCase()] || data.key.toLowerCase();
@@ -888,22 +957,8 @@ parentPort.on('message', async (message) => {
 
       case 'functionkey':
         if (data.key) {
-          const fKeyMap = {
-            F1: Key.F1,
-            F2: Key.F2,
-            F3: Key.F3,
-            F4: Key.F4,
-            F5: Key.F5,
-            F6: Key.F6,
-            F7: Key.F7,
-            F8: Key.F8,
-            F9: Key.F9,
-            F10: Key.F10,
-            F11: Key.F11,
-            F12: Key.F12,
-          };
-
-          const nutKey = fKeyMap[data.key] || data.key.toLowerCase();
+          const keyMap = getKeyMap();
+          const nutKey = keyMap[data.key] || data.key;
           await keyboard.pressKey(nutKey);
           await keyboard.releaseKey(nutKey);
         }
