@@ -131,6 +131,7 @@ class CanvasVideoRenderer {
 
   destroy() {
     this.stopRendering();
+    this.isPlaying = false; // 确保重置播放状态
     if (this.video) {
       this.video.srcObject = null;
       this.video.remove();
@@ -406,6 +407,33 @@ class ScreenShareApp {
   }
 
   // 绑定全局快捷键（始终活跃，即使控制未启用）
+  // 检查是否在观看界面且成功连接到远程界面
+  isViewingRemoteScreen() {
+    // 检查当前是否在屏幕观看界面
+    const isInScreenView = this.dom.screenView && this.dom.screenView.style.display !== 'none';
+    
+    // 检查是否有活跃的P2P连接
+    const hasActiveConnection = this.p2pConnections.size > 0;
+    
+    // 检查是否有可用的远程屏幕信息
+    const hasRemoteScreenInfo = this.getRemoteScreenInfo() !== null;
+    
+    // 检查canvas渲染器是否正常工作
+    const hasCanvasRenderer = this.canvasRenderer && this.canvasRenderer.isPlaying;
+    
+    const isViewing = isInScreenView && hasActiveConnection && hasRemoteScreenInfo && hasCanvasRenderer;
+    
+    console.log('[全局快捷键] 观看状态检查:', {
+      isInScreenView,
+      hasActiveConnection,
+      hasRemoteScreenInfo,
+      hasCanvasRenderer,
+      isViewing
+    });
+    
+    return isViewing;
+  }
+
   bindGlobalShortcuts() {
     // 如果已经绑定过，先解绑避免重复
     this.unbindGlobalShortcuts();
@@ -416,9 +444,19 @@ class ScreenShareApp {
         return;
       }
 
+      // 检查是否在观看界面且成功连接到远程界面
+      const isViewing = this.isViewingRemoteScreen();
+      
       // 监听启用控制的快捷键：Ctrl+Shift+C
       if (e.key === 'C' && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
         if (!this.isControlEnabled) {
+          // 只有在观看界面且成功连接时才允许启用控制
+          if (!isViewing) {
+            console.log('[全局快捷键] Ctrl+Shift+C 被忽略 - 未在观看界面或未成功连接');
+            this.updateAppStatus('快捷键无效 - 请先连接到远程屏幕');
+            return;
+          }
+          
           // 当前未启用控制，快捷键用于启用控制
           e.preventDefault();
           e.stopPropagation();
@@ -437,6 +475,13 @@ class ScreenShareApp {
           (e.key === 'f' && e.altKey) ||
           (e.key === 'Enter' && e.altKey))
       ) {
+        // 只有在观看界面且成功连接时才允许全屏快捷键
+        if (!isViewing) {
+          console.log('[全局快捷键] 全屏快捷键被忽略 - 未在观看界面或未成功连接');
+          this.updateAppStatus('快捷键无效 - 请先连接到远程屏幕');
+          return;
+        }
+        
         e.preventDefault();
         e.stopPropagation();
         console.log('[全局快捷键] 全屏快捷键触发本地全屏切换');
