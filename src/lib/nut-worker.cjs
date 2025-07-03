@@ -347,15 +347,15 @@ parentPort.on('message', async (message) => {
           });
           await mouse.setMousePosition(new Point(coords.x, coords.y));
         }
-        // 映射按键值：0=left, 1=middle, 2=right
-        const downButton =
-          typeof data.button === 'number'
-            ? data.button === 0
-              ? Button.LEFT
-              : data.button === 1
-                ? Button.MIDDLE
-                : Button.RIGHT
-            : Button.LEFT;
+        // 映射按键值：0=left, 1=middle, 2=right 或 'left'='middle'='right'
+        const downButton = (() => {
+          if (typeof data.button === 'number') {
+            return data.button === 0 ? Button.LEFT : data.button === 1 ? Button.MIDDLE : Button.RIGHT;
+          } else if (typeof data.button === 'string') {
+            return data.button === 'left' ? Button.LEFT : data.button === 'middle' ? Button.MIDDLE : Button.RIGHT;
+          }
+          return Button.LEFT; // 默认左键
+        })();
         await mouse.pressButton(downButton);
         console.log('[Nut Worker] 鼠标按下成功:', {
           button: data.button,
@@ -380,15 +380,15 @@ parentPort.on('message', async (message) => {
           });
           await mouse.setMousePosition(new Point(coords.x, coords.y));
         }
-        // 映射按键值：0=left, 1=middle, 2=right
-        const upButton =
-          typeof data.button === 'number'
-            ? data.button === 0
-              ? Button.LEFT
-              : data.button === 1
-                ? Button.MIDDLE
-                : Button.RIGHT
-            : Button.LEFT;
+        // 映射按键值：0=left, 1=middle, 2=right 或 'left'='middle'='right'
+        const upButton = (() => {
+          if (typeof data.button === 'number') {
+            return data.button === 0 ? Button.LEFT : data.button === 1 ? Button.MIDDLE : Button.RIGHT;
+          } else if (typeof data.button === 'string') {
+            return data.button === 'left' ? Button.LEFT : data.button === 'middle' ? Button.MIDDLE : Button.RIGHT;
+          }
+          return Button.LEFT; // 默认左键
+        })();
         await mouse.releaseButton(upButton);
         console.log('[Nut Worker] 鼠标释放成功:', {
           button: data.button,
@@ -402,15 +402,15 @@ parentPort.on('message', async (message) => {
           const coords = transformCoordinates(data);
           await mouse.setMousePosition(new Point(coords.x, coords.y));
         }
-        // 映射按键值：0=left, 1=middle, 2=right
-        const dblClickButton =
-          typeof data.button === 'number'
-            ? data.button === 0
-              ? Button.LEFT
-              : data.button === 1
-                ? Button.MIDDLE
-                : Button.RIGHT
-            : Button.LEFT;
+        // 映射按键值：0=left, 1=middle, 2=right 或 'left'='middle'='right'
+        const dblClickButton = (() => {
+          if (typeof data.button === 'number') {
+            return data.button === 0 ? Button.LEFT : data.button === 1 ? Button.MIDDLE : Button.RIGHT;
+          } else if (typeof data.button === 'string') {
+            return data.button === 'left' ? Button.LEFT : data.button === 'middle' ? Button.MIDDLE : Button.RIGHT;
+          }
+          return Button.LEFT; // 默认左键
+        })();
         await mouse.doubleClick(dblClickButton);
         console.log('[Nut Worker] 双击:', {
           button: data.button,
@@ -444,15 +444,15 @@ parentPort.on('message', async (message) => {
           const coords = transformCoordinates(data);
           await mouse.setMousePosition(new Point(coords.x, coords.y));
         }
-        // 映射按键值：0=left, 1=middle, 2=right
-        const longPressButton =
-          typeof data.button === 'number'
-            ? data.button === 0
-              ? Button.LEFT
-              : data.button === 1
-                ? Button.MIDDLE
-                : Button.RIGHT
-            : Button.LEFT;
+        // 映射按键值：0=left, 1=middle, 2=right 或 'left'='middle'='right'
+        const longPressButton = (() => {
+          if (typeof data.button === 'number') {
+            return data.button === 0 ? Button.LEFT : data.button === 1 ? Button.MIDDLE : Button.RIGHT;
+          } else if (typeof data.button === 'string') {
+            return data.button === 'left' ? Button.LEFT : data.button === 'middle' ? Button.MIDDLE : Button.RIGHT;
+          }
+          return Button.LEFT; // 默认左键
+        })();
         await mouse.pressButton(longPressButton);
         console.log('[Nut Worker] 长按开始:', {
           button: data.button,
