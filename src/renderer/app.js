@@ -270,8 +270,6 @@ class ScreenShareApp {
 
       // Display Areas
       screenSources: document.getElementById('screenSources'),
-      participantsList: document.getElementById('participantsList'),
-      participantCount: document.getElementById('participantCount'),
       onlineUsersList: document.getElementById('onlineUsersList'),
       remoteCanvas: document.getElementById('remoteCanvas'),
       videoOverlay: document.getElementById('videoOverlay'),
@@ -589,15 +587,7 @@ class ScreenShareApp {
       case 'user-offline': // 修改：处理单个用户下线
         this.removeOnlineUser(message.userId);
         break;
-      case 'hosts-list':
-        this.updateHostStatus(message.hosts);
-        break;
-      case 'host-online':
-        this.updateHostStatus([message.host]);
-        break;
-      case 'host-offline':
-        this.updateHostStatus([{ id: message.hostId, isHosting: false }]);
-        break;
+
       case 'offer':
         this.handleOffer(message.from, message.data);
         break;
@@ -754,29 +744,20 @@ class ScreenShareApp {
     textSpan.textContent = '开始屏幕分享';
     this.dom.startScreenShare.onclick = this.startSharing.bind(this);
     this.updateAppStatus('就绪');
-    this.updateParticipantsList();
 
-    // 清空选中的屏幕信息
+    // 清空选中的屏幕信息和UI状态
+    if (this.selectedSourceEl) {
+      this.selectedSourceEl.classList.remove('selected');
+    }
     this.selectedSourceId = null;
     this.selectedScreenInfo = null;
     this.selectedSourceEl = null;
+    
+    // 禁用开始分享按钮，要求用户重新选择
+    this.dom.startScreenShare.disabled = true;
   }
 
-  updateParticipantsList() {
-    const count = this.p2pConnections.size;
-    this.dom.participantCount.textContent = count;
-    this.dom.participantsList.innerHTML = '';
-    if (count === 0) {
-      this.dom.participantsList.innerHTML = '<li>暂无观看者</li>';
-      return;
-    }
-    for (const remoteId of this.p2pConnections.keys()) {
-      const item = document.createElement('li');
-      item.className = 'participant-item';
-      item.innerHTML = `<div class="participant-avatar">${remoteId.charAt(0).toUpperCase()}</div> ${remoteId}`;
-      this.dom.participantsList.appendChild(item);
-    }
-  }
+
 
   // --- 访客逻辑 (重构为在线用户列表) ---
   updateOnlineUsersList(users) {
@@ -799,26 +780,7 @@ class ScreenShareApp {
     }
   }
 
-  updateHostStatus(hosts) {
-    if (!this.allUsers) return;
-    console.log('[HOST-STATUS] 更新主机状态:', hosts);
-    hosts.forEach((host) => {
-      const user = this.allUsers.get(host.id);
-      if (user) {
-        user.isHosting = host.isHosting !== false;
-        user.name = host.name;
-        // 更新屏幕信息
-        if (host.screenInfo) {
-          user.screenInfo = host.screenInfo;
-          console.log(
-            `[HOST-STATUS] 主机 ${host.id} 屏幕信息:`,
-            host.screenInfo,
-          );
-        }
-      }
-    });
-    this.renderUserList();
-  }
+
 
   renderUserList() {
     const listEl = this.dom.onlineUsersList;
@@ -995,7 +957,6 @@ class ScreenShareApp {
 
     p2p = new P2PConnection(this.userId, fromId);
     this.p2pConnections.set(fromId, p2p);
-    this.updateParticipantsList();
 
     p2p.addEventListener('icecandidate', ({ detail: candidate }) => {
       this.signal.send({
@@ -1007,7 +968,6 @@ class ScreenShareApp {
     });
     p2p.addEventListener('close', () => {
       this.p2pConnections.delete(fromId);
-      this.updateParticipantsList();
     });
 
     // 关键修复：为共享端的连接添加控制指令处理器
